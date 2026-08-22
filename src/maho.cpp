@@ -47,26 +47,23 @@ void Maho::replan() {
 
 const Maho::Paths& Maho::get_paths() const { return paths_; }
 
-Maho::CandidatePaths Maho::expandPaths(bool replace_terminal) const {
+Maho::CandidatePaths Maho::expandPaths(bool advance_path) const {
   CandidatePaths candidates{};
   std::size_t candidate_index = 0;
 
   for (const Path& path : paths_) {
-    if (path.nodes.empty() || (replace_terminal && path.nodes.size() < 2)) {
+    if (path.nodes.empty()) {
       continue;
     }
 
-    const std::size_t expansion_index =
-        replace_terminal ? path.nodes.size() - 2 : path.nodes.size() - 1;
     const Expander::ExpandedNodes expanded_nodes =
-        expander_.expand(path.nodes[expansion_index]);
+        expander_.expand(path.nodes.back());
     for (const Node& expanded_node : expanded_nodes) {
       Path candidate = path;
-      if (replace_terminal) {
-        candidate.nodes.back() = expanded_node;
-      } else {
-        candidate.nodes.push_back(expanded_node);
+      if (advance_path) {
+        candidate.nodes.erase(candidate.nodes.begin());
       }
+      candidate.nodes.push_back(expanded_node);
       candidate.cost = evaluator_.evaluate(candidate.nodes, env_, goal_);
       candidates[candidate_index++] = std::move(candidate);
     }

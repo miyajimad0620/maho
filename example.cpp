@@ -8,7 +8,18 @@
 
 namespace {
 
-constexpr std::size_t kSimulationStepCount = 5;
+constexpr std::size_t kSimulationStepCount = 50;
+constexpr double kDt = 0.2;
+
+void AdvanceNode(Node* node) {
+  const double cos_theta = std::cos(node->pose.theta);
+  const double sin_theta = std::sin(node->pose.theta);
+  node->pose.x +=
+      (cos_theta * node->twist.x - sin_theta * node->twist.y) * kDt;
+  node->pose.y +=
+      (sin_theta * node->twist.x + cos_theta * node->twist.y) * kDt;
+  node->pose.theta += node->twist.theta * kDt;
+}
 
 void PrintDouble(double value) {
   if (std::isnan(value)) {
@@ -113,19 +124,21 @@ int main() {
       {{2.0, 1.0}, {4.0, -1.0}, {6.0, 1.0}},
       {8.0, 0.0, 0.0},
   };
-  const Expander expander({0.2, {0.2, 0.2, 0.15}});
+  const Expander expander({kDt, {0.2, 0.2, 0.15}});
   const Evaluator evaluator({0.1, 0.25, 1.0});
   const Selector selector({1.0, 0.5, 0.2});
   const Optimizer optimizer({
       0.1,
       0.75,
       0.25,
-      1.0,
+      5.0,
       0.2,
+      0.1,
       0.02,
       1e-4,
       2,
-      0.2,
+      kDt,
+      {2.0, 2.0, 1.5},
       {0.2, 0.2, 0.15},
   });
 
@@ -137,9 +150,10 @@ int main() {
   std::cout << "steps:\n";
   PrintPaths(0, current_node, maho.get_paths());
   for (std::size_t step = 1; step <= kSimulationStepCount; ++step) {
-    current_node = maho.get_paths().front().nodes[step];
-    maho.update_init_node(current_node);
+    current_node.twist = maho.get_paths().front().nodes[1].twist;
+    AdvanceNode(&current_node);
     maho.replan();
+    maho.update_init_node(current_node);
     PrintPaths(step, current_node, maho.get_paths());
   }
 }

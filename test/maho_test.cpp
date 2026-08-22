@@ -19,12 +19,14 @@ Maho MakeMaho() {
       1.0,
       1.0,
       0.1,
+      0.1,
       1.0,
       1.0,
       0.1,
       1e-4,
       0,
       1.0,
+      {100.0, 100.0, 100.0},
       {100.0, 100.0, 100.0},
   });
   return Maho(params, expander, evaluator, selector, optimizer);
@@ -44,6 +46,13 @@ bool IsSameNode(const Node& lhs, const Node& rhs) {
          std::abs(lhs.twist.x - rhs.twist.x) < kTolerance &&
          std::abs(lhs.twist.y - rhs.twist.y) < kTolerance &&
          std::abs(lhs.twist.theta - rhs.twist.theta) < kTolerance;
+}
+
+bool IsSameTwist(const Twist2D& lhs, const Twist2D& rhs) {
+  constexpr double kTolerance = 1e-12;
+  return std::abs(lhs.x - rhs.x) < kTolerance &&
+         std::abs(lhs.y - rhs.y) < kTolerance &&
+         std::abs(lhs.theta - rhs.theta) < kTolerance;
 }
 
 void TestConstructsFixedLengthPaths() {
@@ -93,20 +102,23 @@ void TestReplansTerminalNodes() {
     bool is_expanded_from_previous_path = false;
     for (const Path& previous : before) {
       bool prefix_matches = true;
-      for (std::size_t i = 0; i + 1 < replanned.nodes.size(); ++i) {
+      for (std::size_t i = 0; i + 2 < replanned.nodes.size(); ++i) {
         prefix_matches =
-            prefix_matches && IsSameNode(replanned.nodes[i], previous.nodes[i]);
+            prefix_matches &&
+            IsSameNode(replanned.nodes[i], previous.nodes[i + 1]);
       }
       if (!prefix_matches) {
         continue;
       }
 
       const Expander::ExpandedNodes expanded_nodes =
-          expander.expand(previous.nodes[previous.nodes.size() - 2]);
+          expander.expand(previous.nodes.back());
       for (const Node& expanded_node : expanded_nodes) {
         is_expanded_from_previous_path =
             is_expanded_from_previous_path ||
-            IsSameNode(replanned.nodes.back(), expanded_node);
+            IsSameTwist(
+                replanned.nodes[replanned.nodes.size() - 2].twist,
+                expanded_node.twist);
       }
     }
     assert(is_expanded_from_previous_path);

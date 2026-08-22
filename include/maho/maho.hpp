@@ -35,7 +35,7 @@ class Maho {
       kPathCount * Expander::kExpansionCount;
   using CandidatePaths = std::array<Path, kCandidateCount>;
 
-  CandidatePaths expandPaths(bool replace_terminal) const;
+  CandidatePaths expandPaths(bool advance_path) const;
   void optimizeAndEvaluate(Path* path) const;
   void sortPaths();
 
