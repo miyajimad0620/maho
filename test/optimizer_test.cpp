@@ -1,5 +1,7 @@
 #include "maho/optimizer.hpp"
 
+#include "maho/expander.hpp"
+
 #include <cassert>
 #include <cmath>
 #include <stdexcept>
@@ -120,21 +122,21 @@ void TestLimitsVelocityChanges() {
     const double sin_theta = std::sin(previous.pose.theta);
     assert(std::abs(current.pose.x -
                     (previous.pose.x +
-                     (cos_theta * previous.twist.x -
-                      sin_theta * previous.twist.y) *
+                     (cos_theta * current.twist.x -
+                      sin_theta * current.twist.y) *
                          params.dt)) < kTolerance);
     assert(std::abs(current.pose.y -
                     (previous.pose.y +
-                     (sin_theta * previous.twist.x +
-                      cos_theta * previous.twist.y) *
+                     (sin_theta * current.twist.x +
+                      cos_theta * current.twist.y) *
                          params.dt)) < kTolerance);
     assert(std::abs(current.pose.theta -
                     (previous.pose.theta +
-                     previous.twist.theta * params.dt)) < kTolerance);
+                     current.twist.theta * params.dt)) < kTolerance);
   }
 }
 
-void TestUsesPreviousNodeVelocity() {
+void TestUsesCurrentNodeVelocity() {
   OptimizerParams params = MakeParams();
   params.max_iterations = 0;
   params.dt = 0.5;
@@ -143,8 +145,8 @@ void TestUsesPreviousNodeVelocity() {
   const Optimizer optimizer(params);
   constexpr double kHalfPi = 1.57079632679489661923;
   const std::vector<Node> nodes{
-      {{1.0, 2.0, kHalfPi}, {2.0, 1.0, 0.5}},
-      {{100.0, 100.0, 100.0}, {-3.0, -3.0, -3.0}},
+      {{1.0, 2.0, kHalfPi}, {0.0, 0.0, 0.0}},
+      {{0.5, 3.0, kHalfPi + 0.25}, {-3.0, -3.0, -3.0}},
   };
 
   const std::vector<Node> optimized =
@@ -154,6 +156,44 @@ void TestUsesPreviousNodeVelocity() {
   assert(std::abs(optimized[1].pose.y - 3.0) < kTolerance);
   assert(std::abs(optimized[1].pose.theta -
                   (kHalfPi + 0.25)) < kTolerance);
+  assert(std::abs(optimized[1].twist.x - 2.0) < kTolerance);
+  assert(std::abs(optimized[1].twist.y - 1.0) < kTolerance);
+  assert(std::abs(optimized[1].twist.theta - 0.5) < kTolerance);
+}
+
+void TestPreservesExpandedNodeKinematics() {
+  OptimizerParams params = MakeParams();
+  params.max_iterations = 0;
+  params.dt = 0.2;
+  params.max_velocity = {10.0, 10.0, 10.0};
+  params.max_velocity_change = {0.2, 0.2, 0.15};
+  const Optimizer optimizer(params);
+  const Expander expander({0.2, {0.2, 0.2, 0.15}});
+  const Node initial{{0.3, -0.2, 0.4}, {0.5, -0.1, 0.2}};
+
+  for (const Node& expanded : expander.expand(initial)) {
+    const std::vector<Node> optimized =
+        optimizer.optimize({initial, expanded}, {}, expanded.pose);
+    assert(std::abs(optimized[1].pose.x - expanded.pose.x) < kTolerance);
+    assert(std::abs(optimized[1].pose.y - expanded.pose.y) < kTolerance);
+    assert(std::abs(optimized[1].pose.theta - expanded.pose.theta) <
+           kTolerance);
+    assert(std::abs(optimized[1].twist.x - expanded.twist.x) < kTolerance);
+    assert(std::abs(optimized[1].twist.y - expanded.twist.y) < kTolerance);
+    assert(std::abs(optimized[1].twist.theta - expanded.twist.theta) <
+           kTolerance);
+  }
+}
+
+void TestExpandsSimultaneousBrakingNode() {
+  const Expander expander({0.2, {0.2, 0.2, 0.15}});
+  const Node initial{{0.3, -0.2, 0.4}, {0.5, -0.3, 0.2}};
+
+  const Node& braking = expander.expand(initial).back();
+
+  assert(std::abs(braking.twist.x - 0.3) < kTolerance);
+  assert(std::abs(braking.twist.y + 0.1) < kTolerance);
+  assert(std::abs(braking.twist.theta - 0.05) < kTolerance);
 }
 
 void TestLimitsAbsoluteVelocity() {
@@ -191,6 +231,29 @@ void TestRejectsNegativeMaxVelocity() {
     threw = true;
   }
   assert(threw);
+}
+
+void TestMovesVelocityTowardDistanceBasedTarget() {
+  OptimizerParams params = MakeParams();
+  params.obstacle_cost_coefficient = 0.0;
+  params.goal_position_cost_coefficient = 0.0;
+  params.goal_angle_cost_coefficient = 0.0;
+  params.velocity_change_cost_coefficient = 0.0;
+  params.learning_rate = 0.01;
+  params.max_iterations = 100;
+  params.max_velocity = {10.0, 10.0, 10.0};
+  params.max_velocity_change = {10.0, 10.0, 10.0};
+  params.goal_velocity_cost = {1.0, 0.1, 1.0, 1.0, 0.1};
+  const std::vector<Node> nodes{
+      {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
+      {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
+      {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
+  };
+
+  const std::vector<Node> optimized =
+      Optimizer(params).optimize(nodes, {}, {10.0, 0.0, 0.0});
+
+  assert(optimized[1].twist.x > nodes[1].twist.x);
 }
 
 double SquaredVelocityChanges(const std::vector<Node>& nodes) {
@@ -241,8 +304,11 @@ int main() {
   TestMovesNodeAwayFromObstacle();
   TestEscapesObstaclePoint();
   TestLimitsVelocityChanges();
-  TestUsesPreviousNodeVelocity();
+  TestUsesCurrentNodeVelocity();
+  TestPreservesExpandedNodeKinematics();
+  TestExpandsSimultaneousBrakingNode();
   TestLimitsAbsoluteVelocity();
   TestRejectsNegativeMaxVelocity();
+  TestMovesVelocityTowardDistanceBasedTarget();
   TestPenalizesVelocityChanges();
 }

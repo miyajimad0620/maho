@@ -1,5 +1,6 @@
 #include "maho/expander.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 Expander::Expander(const ExpanderParams& params) : params_(params) {}
@@ -14,6 +15,12 @@ Expander::ExpandedNodes Expander::expand(const Node& node) const {
       {0.0, 0.0, -params_.velocity_step.theta},
       {0.0, 0.0, params_.velocity_step.theta},
       {0.0, 0.0, 0.0},
+      {std::clamp(-node.twist.x, -params_.velocity_step.x,
+                  params_.velocity_step.x),
+       std::clamp(-node.twist.y, -params_.velocity_step.y,
+                  params_.velocity_step.y),
+       std::clamp(-node.twist.theta, -params_.velocity_step.theta,
+                  params_.velocity_step.theta)},
   }};
 
   for (std::size_t i = 0; i < expanded_nodes.size(); ++i) {

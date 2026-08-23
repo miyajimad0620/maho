@@ -27,6 +27,7 @@ double ClampVelocity(double value, double previous, double max_change,
 }  // namespace
 
 Optimizer::Optimizer(const OptimizerParams& params) : params_(params) {
+  const GoalVelocityCostParams& velocity = params_.goal_velocity_cost;
   if (params_.obstacle_cost_coefficient < 0.0 ||
       params_.obstacle_influence_distance < 0.0 ||
       params_.robot_radius < 0.0 ||
@@ -39,7 +40,16 @@ Optimizer::Optimizer(const OptimizerParams& params) : params_(params) {
       params_.max_velocity.theta < 0.0 ||
       params_.max_velocity_change.x < 0.0 ||
       params_.max_velocity_change.y < 0.0 ||
-      params_.max_velocity_change.theta < 0.0) {
+      params_.max_velocity_change.theta < 0.0 ||
+      velocity.cost_coefficient < 0.0 ||
+      velocity.distance_coefficient < 0.0 || velocity.max_velocity < 0.0 ||
+      velocity.lateral_velocity_cost_coefficient < 0.0 ||
+      velocity.position_tolerance < 0.0 ||
+      velocity.terminal_velocity_cost_coefficient < 0.0 ||
+      velocity.terminal_angular_velocity_cost_coefficient < 0.0 ||
+      velocity.angular_velocity_cost_coefficient < 0.0 ||
+      velocity.angular_distance_coefficient < 0.0 ||
+      velocity.max_angular_velocity < 0.0) {
     throw std::invalid_argument("invalid optimizer parameter");
   }
 }
@@ -90,6 +100,7 @@ std::vector<Node> Optimizer::optimize(const std::vector<Node>& nodes,
 double Optimizer::cost(const std::vector<Node>& nodes, const Env& env,
                        const Pose2D& goal) const {
   double total = 0.0;
+  double goal_velocity_cost = 0.0;
   for (const Node& node : nodes) {
     double nearest_distance = std::numeric_limits<double>::infinity();
     for (const Point2D& point : env) {
@@ -104,7 +115,12 @@ double Optimizer::cost(const std::vector<Node>& nodes, const Env& env,
           std::max(0.0, params_.obstacle_influence_distance - clearance);
       total += params_.obstacle_cost_coefficient * penetration * penetration;
     }
+
+    goal_velocity_cost += CalculateGoalVelocityCost(
+        node, goal, params_.goal_velocity_cost);
   }
+
+  total += goal_velocity_cost / static_cast<double>(nodes.size());
 
   for (std::size_t i = 1; i < nodes.size(); ++i) {
     const Twist2D& previous = nodes[i - 1].twist;
@@ -122,65 +138,44 @@ double Optimizer::cost(const std::vector<Node>& nodes, const Env& env,
   const double dtheta = AngleDifference(terminal.theta, goal.theta);
   total += params_.goal_position_cost_coefficient * (dx * dx + dy * dy);
   total += params_.goal_angle_cost_coefficient * dtheta * dtheta;
+  total += CalculateTerminalGoalVelocityCost(nodes.back(), goal,
+                                             params_.goal_velocity_cost);
   return total;
 }
 
 void Optimizer::enforceKinematicConstraints(std::vector<Node>* nodes) const {
   for (std::size_t i = 1; i < nodes->size(); ++i) {
-    Node& previous = (*nodes)[i - 1];
+    const Node& previous = (*nodes)[i - 1];
     Node& current = (*nodes)[i];
     const double cos_theta = std::cos(previous.pose.theta);
     const double sin_theta = std::sin(previous.pose.theta);
-    if (i > 1) {
-      const Node& before_previous = (*nodes)[i - 2];
-      const double dx = current.pose.x - previous.pose.x;
-      const double dy = current.pose.y - previous.pose.y;
-      const Twist2D desired{
-          (cos_theta * dx + sin_theta * dy) / params_.dt,
-          (-sin_theta * dx + cos_theta * dy) / params_.dt,
-          AngleDifference(current.pose.theta, previous.pose.theta) /
-              params_.dt,
-      };
-      previous.twist.x =
-          ClampVelocity(desired.x, before_previous.twist.x,
-                        params_.max_velocity_change.x,
-                        params_.max_velocity.x);
-      previous.twist.y =
-          ClampVelocity(desired.y, before_previous.twist.y,
-                        params_.max_velocity_change.y,
-                        params_.max_velocity.y);
-      previous.twist.theta =
-          ClampVelocity(desired.theta, before_previous.twist.theta,
-                        params_.max_velocity_change.theta,
-                        params_.max_velocity.theta);
-    }
+    const double dx = current.pose.x - previous.pose.x;
+    const double dy = current.pose.y - previous.pose.y;
+    const Twist2D desired{
+        (cos_theta * dx + sin_theta * dy) / params_.dt,
+        (-sin_theta * dx + cos_theta * dy) / params_.dt,
+        AngleDifference(current.pose.theta, previous.pose.theta) / params_.dt,
+    };
+    current.twist.x =
+        ClampVelocity(desired.x, previous.twist.x,
+                      params_.max_velocity_change.x, params_.max_velocity.x);
+    current.twist.y =
+        ClampVelocity(desired.y, previous.twist.y,
+                      params_.max_velocity_change.y, params_.max_velocity.y);
+    current.twist.theta =
+        ClampVelocity(desired.theta, previous.twist.theta,
+                      params_.max_velocity_change.theta,
+                      params_.max_velocity.theta);
 
     current.pose.x =
         previous.pose.x +
-        (cos_theta * previous.twist.x - sin_theta * previous.twist.y) *
+        (cos_theta * current.twist.x - sin_theta * current.twist.y) *
             params_.dt;
     current.pose.y =
         previous.pose.y +
-        (sin_theta * previous.twist.x + cos_theta * previous.twist.y) *
+        (sin_theta * current.twist.x + cos_theta * current.twist.y) *
             params_.dt;
     current.pose.theta =
-        previous.pose.theta + previous.twist.theta * params_.dt;
-  }
-
-  if (nodes->size() >= 2) {
-    const Node& previous = (*nodes)[nodes->size() - 2];
-    Node& last = nodes->back();
-    last.twist.x =
-        ClampVelocity(last.twist.x, previous.twist.x,
-                      params_.max_velocity_change.x,
-                      params_.max_velocity.x);
-    last.twist.y =
-        ClampVelocity(last.twist.y, previous.twist.y,
-                      params_.max_velocity_change.y,
-                      params_.max_velocity.y);
-    last.twist.theta =
-        ClampVelocity(last.twist.theta, previous.twist.theta,
-                      params_.max_velocity_change.theta,
-                      params_.max_velocity.theta);
+        previous.pose.theta + current.twist.theta * params_.dt;
   }
 }

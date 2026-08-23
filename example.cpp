@@ -121,11 +121,14 @@ int main() {
 
   const MahoParams params{
       {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
-      {{2.0, 1.0}, {4.0, -1.0}, {6.0, 1.0}},
+      {{2.0, 1.0}, {4.0, -1.0}, {6.0, 1.0}, {5.0, 0.0}},
       {8.0, 0.0, 0.0},
+      {0.1, 0.1, 0.1, 0.1},
   };
   const Expander expander({kDt, {0.2, 0.2, 0.15}});
-  const Evaluator evaluator({0.1, 0.25, 1.0});
+  const Evaluator evaluator(
+      {0.1, 0.25, 1.0,
+       {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5}});
   const Selector selector({1.0, 0.5, 0.2});
   const Optimizer optimizer({
       0.1,
@@ -140,6 +143,7 @@ int main() {
       kDt,
       {2.0, 2.0, 1.5},
       {0.2, 0.2, 0.15},
+      {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5},
   });
 
   Maho maho(params, expander, evaluator, selector, optimizer);
@@ -152,8 +156,10 @@ int main() {
   for (std::size_t step = 1; step <= kSimulationStepCount; ++step) {
     current_node.twist = maho.get_paths().front().nodes[1].twist;
     AdvanceNode(&current_node);
-    maho.replan();
-    maho.update_init_node(current_node);
+    maho.replan(current_node);
     PrintPaths(step, current_node, maho.get_paths());
+    if (maho.is_goal_reached(current_node)) {
+      break;
+    }
   }
 }

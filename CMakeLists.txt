@@ -8,6 +8,7 @@ add_library(
   maho
   src/evaluator.cpp
   src/expander.cpp
+  src/goal_velocity_cost.cpp
   src/maho.cpp
   src/optimizer.cpp
   src/selector.cpp

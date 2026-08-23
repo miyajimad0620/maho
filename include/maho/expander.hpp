@@ -12,7 +12,8 @@ struct ExpanderParams {
 
 class Expander {
  public:
-  static constexpr std::size_t kExpansionCount = 7;
+  static constexpr std::size_t kNoVelocityChangeIndex = 6;
+  static constexpr std::size_t kExpansionCount = 8;
   using ExpandedNodes = std::array<Node, kExpansionCount>;
 
   explicit Expander(const ExpanderParams& params);

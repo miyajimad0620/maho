@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "maho/env.hpp"
+#include "maho/goal_velocity_cost.hpp"
 #include "maho/node.hpp"
 
 struct OptimizerParams {
@@ -20,6 +21,7 @@ struct OptimizerParams {
   double dt;
   Twist2D max_velocity;
   Twist2D max_velocity_change;
+  GoalVelocityCostParams goal_velocity_cost{};
 };
 
 class Optimizer {

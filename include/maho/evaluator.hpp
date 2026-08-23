@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "maho/env.hpp"
+#include "maho/goal_velocity_cost.hpp"
 #include "maho/node.hpp"
 
 using Nodes = std::vector<Node>;
@@ -13,6 +14,7 @@ struct EvaluatorParams {
   double obstacle_cost_coefficient;
   double robot_radius;
   double goal_cost_coefficient;
+  GoalVelocityCostParams goal_velocity_cost{};
 };
 
 class Evaluator {
