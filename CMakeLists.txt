@@ -6,6 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(
   maho
+  src/evaluation_function.cpp
   src/evaluator.cpp
   src/expander.cpp
   src/goal_velocity_cost.cpp

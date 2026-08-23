@@ -126,25 +126,19 @@ int main() {
       {0.1, 0.1, 0.1, 0.1},
   };
   const Expander expander({kDt, {0.2, 0.2, 0.15}});
-  const Evaluator evaluator(
-      {0.1, 0.25, 1.0,
+  const EvaluationFunction evaluation_function(
+      {0.1, 0.75, 0.25, 5.0, 0.2, 0.1,
        {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5}});
+  const Evaluator evaluator(evaluation_function);
   const Selector selector({1.0, 0.5, 0.2});
   const Optimizer optimizer({
-      0.1,
-      0.75,
-      0.25,
-      5.0,
-      0.2,
-      0.1,
       0.02,
       1e-4,
       2,
       kDt,
       {2.0, 2.0, 1.5},
       {0.2, 0.2, 0.15},
-      {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5},
-  });
+  }, evaluation_function);
 
   Maho maho(params, expander, evaluator, selector, optimizer);
   Node current_node = params.initial_node;

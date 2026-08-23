@@ -14,22 +14,18 @@ Maho MakeMaho() {
       {0.2, 0.1, 0.1, 0.1},
   };
   const Expander expander({1.0, {1.0, 1.0, 1.0}});
-  const Evaluator evaluator({1.0, 0.1, 1.0});
+  const EvaluationFunction evaluation_function(
+      {1.0, 1.0, 0.1, 1.0, 1.0, 1.0});
+  const Evaluator evaluator(evaluation_function);
   const Selector selector({1.0, 1.0, 1.0});
   const Optimizer optimizer({
-      1.0,
-      1.0,
-      0.1,
-      0.1,
-      1.0,
-      1.0,
       0.1,
       1e-4,
       0,
       1.0,
       {100.0, 100.0, 100.0},
       {100.0, 100.0, 100.0},
-  });
+  }, evaluation_function);
   return Maho(params, expander, evaluator, selector, optimizer);
 }
 
@@ -175,25 +171,19 @@ void TestReachesGoalAndStops() {
       {0.1, 0.1, 0.1, 0.1},
   };
   const Expander expander({kDt, {0.2, 0.2, 0.15}});
-  const Evaluator evaluator(
-      {0.0, 0.1, 1.0,
+  const EvaluationFunction evaluation_function(
+      {0.0, 0.0, 0.1, 5.0, 0.2, 0.1,
        {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5}});
+  const Evaluator evaluator(evaluation_function);
   const Selector selector({1.0, 0.5, 0.2});
   const Optimizer optimizer({
-      0.0,
-      0.0,
-      0.1,
-      5.0,
-      0.2,
-      0.1,
       0.02,
       1e-4,
       0,
       kDt,
       {2.0, 2.0, 1.5},
       {0.2, 0.2, 0.15},
-      {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5},
-  });
+  }, evaluation_function);
   Maho maho(params, expander, evaluator, selector, optimizer);
   Node current = params.initial_node;
 

@@ -13,12 +13,6 @@ constexpr double kTolerance = 1e-9;
 
 OptimizerParams MakeParams() {
   return {
-      1.0,             // obstacle_cost_coefficient
-      1.0,             // obstacle_influence_distance
-      0.2,             // robot_radius
-      1.0,             // goal_position_cost_coefficient
-      1.0,             // goal_angle_cost_coefficient
-      0.1,
       0.1,             // learning_rate
       1e-4,            // finite_difference_step
       20,              // max_iterations
@@ -28,8 +22,26 @@ OptimizerParams MakeParams() {
   };
 }
 
+EvaluationFunctionParams MakeEvaluationParams() {
+  return {
+      1.0,
+      1.0,
+      0.2,
+      1.0,
+      1.0,
+      0.1,
+  };
+}
+
+Optimizer MakeOptimizer(
+    const OptimizerParams& params,
+    const EvaluationFunctionParams& evaluation_params =
+        MakeEvaluationParams()) {
+  return Optimizer(params, EvaluationFunction(evaluation_params));
+}
+
 void TestEmptyPath() {
-  const Optimizer optimizer(MakeParams());
+  const Optimizer optimizer = MakeOptimizer(MakeParams());
   assert(optimizer.optimize({}, {}, {1.0, 2.0, 3.0}).empty());
 }
 
@@ -37,7 +49,7 @@ void TestMovesTerminalNodeTowardGoal() {
   OptimizerParams params = MakeParams();
   params.max_velocity_change = {10.0, 10.0, 10.0};
   params.max_velocity = {10.0, 10.0, 10.0};
-  const Optimizer optimizer(params);
+  const Optimizer optimizer = MakeOptimizer(params);
   const std::vector<Node> nodes{
       {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
       {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
@@ -57,11 +69,12 @@ void TestMovesTerminalNodeTowardGoal() {
 
 void TestMovesNodeAwayFromObstacle() {
   OptimizerParams params = MakeParams();
-  params.goal_position_cost_coefficient = 0.0;
-  params.goal_angle_cost_coefficient = 0.0;
+  EvaluationFunctionParams evaluation_params = MakeEvaluationParams();
+  evaluation_params.goal_position_cost_coefficient = 0.0;
+  evaluation_params.goal_angle_cost_coefficient = 0.0;
   params.max_velocity_change = {10.0, 10.0, 10.0};
   params.max_velocity = {10.0, 10.0, 10.0};
-  const Optimizer optimizer(params);
+  const Optimizer optimizer = MakeOptimizer(params, evaluation_params);
   const std::vector<Node> nodes{
       {{-2.0, 0.0, 0.0}, {1.0, 0.0, 0.0}},
       {{-1.0, 0.0, 0.0}, {1.0, 0.0, 0.0}},
@@ -76,11 +89,12 @@ void TestMovesNodeAwayFromObstacle() {
 
 void TestEscapesObstaclePoint() {
   OptimizerParams params = MakeParams();
-  params.goal_position_cost_coefficient = 0.0;
-  params.goal_angle_cost_coefficient = 0.0;
+  EvaluationFunctionParams evaluation_params = MakeEvaluationParams();
+  evaluation_params.goal_position_cost_coefficient = 0.0;
+  evaluation_params.goal_angle_cost_coefficient = 0.0;
   params.max_velocity_change = {10.0, 10.0, 10.0};
   params.max_velocity = {10.0, 10.0, 10.0};
-  const Optimizer optimizer(params);
+  const Optimizer optimizer = MakeOptimizer(params, evaluation_params);
   const std::vector<Node> nodes{
       {{-2.0, 0.0, 0.0}, {1.0, 0.0, 0.0}},
       {{-1.0, 0.0, 0.0}, {1.0, 0.0, 0.0}},
@@ -95,7 +109,7 @@ void TestEscapesObstaclePoint() {
 
 void TestLimitsVelocityChanges() {
   const OptimizerParams params = MakeParams();
-  const Optimizer optimizer(params);
+  const Optimizer optimizer = MakeOptimizer(params);
   const std::vector<Node> nodes{
       {{0.0, 0.0, 0.0}, {1.0, -1.0, 0.5}},
       {{5.0, 5.0, 2.0}, {5.0, 5.0, 5.0}},
@@ -142,7 +156,7 @@ void TestUsesCurrentNodeVelocity() {
   params.dt = 0.5;
   params.max_velocity_change = {10.0, 10.0, 10.0};
   params.max_velocity = {10.0, 10.0, 10.0};
-  const Optimizer optimizer(params);
+  const Optimizer optimizer = MakeOptimizer(params);
   constexpr double kHalfPi = 1.57079632679489661923;
   const std::vector<Node> nodes{
       {{1.0, 2.0, kHalfPi}, {0.0, 0.0, 0.0}},
@@ -167,7 +181,7 @@ void TestPreservesExpandedNodeKinematics() {
   params.dt = 0.2;
   params.max_velocity = {10.0, 10.0, 10.0};
   params.max_velocity_change = {0.2, 0.2, 0.15};
-  const Optimizer optimizer(params);
+  const Optimizer optimizer = MakeOptimizer(params);
   const Expander expander({0.2, {0.2, 0.2, 0.15}});
   const Node initial{{0.3, -0.2, 0.4}, {0.5, -0.1, 0.2}};
 
@@ -200,7 +214,7 @@ void TestLimitsAbsoluteVelocity() {
   OptimizerParams params = MakeParams();
   params.max_velocity = {0.5, 0.6, 0.7};
   params.max_velocity_change = {10.0, 10.0, 10.0};
-  const Optimizer optimizer(params);
+  const Optimizer optimizer = MakeOptimizer(params);
   const std::vector<Node> nodes{
       {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
       {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
@@ -226,7 +240,7 @@ void TestRejectsNegativeMaxVelocity() {
 
   bool threw = false;
   try {
-    const Optimizer optimizer(params);
+    const Optimizer optimizer = MakeOptimizer(params);
   } catch (const std::invalid_argument&) {
     threw = true;
   }
@@ -235,15 +249,16 @@ void TestRejectsNegativeMaxVelocity() {
 
 void TestMovesVelocityTowardDistanceBasedTarget() {
   OptimizerParams params = MakeParams();
-  params.obstacle_cost_coefficient = 0.0;
-  params.goal_position_cost_coefficient = 0.0;
-  params.goal_angle_cost_coefficient = 0.0;
-  params.velocity_change_cost_coefficient = 0.0;
+  EvaluationFunctionParams evaluation_params = MakeEvaluationParams();
+  evaluation_params.obstacle_cost_coefficient = 0.0;
+  evaluation_params.goal_position_cost_coefficient = 0.0;
+  evaluation_params.goal_angle_cost_coefficient = 0.0;
+  evaluation_params.velocity_change_cost_coefficient = 0.0;
   params.learning_rate = 0.01;
   params.max_iterations = 100;
   params.max_velocity = {10.0, 10.0, 10.0};
   params.max_velocity_change = {10.0, 10.0, 10.0};
-  params.goal_velocity_cost = {1.0, 0.1, 1.0, 1.0, 0.1};
+  evaluation_params.goal_velocity_cost = {1.0, 0.1, 1.0, 1.0, 0.1};
   const std::vector<Node> nodes{
       {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
       {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}},
@@ -251,7 +266,8 @@ void TestMovesVelocityTowardDistanceBasedTarget() {
   };
 
   const std::vector<Node> optimized =
-      Optimizer(params).optimize(nodes, {}, {10.0, 0.0, 0.0});
+      MakeOptimizer(params, evaluation_params)
+          .optimize(nodes, {}, {10.0, 0.0, 0.0});
 
   assert(optimized[1].twist.x > nodes[1].twist.x);
 }
@@ -270,8 +286,9 @@ double SquaredVelocityChanges(const std::vector<Node>& nodes) {
 
 void TestPenalizesVelocityChanges() {
   OptimizerParams params = MakeParams();
-  params.obstacle_cost_coefficient = 0.0;
-  params.goal_angle_cost_coefficient = 0.0;
+  EvaluationFunctionParams evaluation_params = MakeEvaluationParams();
+  evaluation_params.obstacle_cost_coefficient = 0.0;
+  evaluation_params.goal_angle_cost_coefficient = 0.0;
   params.learning_rate = 0.01;
   params.max_iterations = 100;
   params.max_velocity = {10.0, 10.0, 10.0};
@@ -284,12 +301,12 @@ void TestPenalizesVelocityChanges() {
   };
   const Pose2D goal{3.0, 0.0, 0.0};
 
-  params.velocity_change_cost_coefficient = 0.0;
+  evaluation_params.velocity_change_cost_coefficient = 0.0;
   const std::vector<Node> unpenalized =
-      Optimizer(params).optimize(nodes, {}, goal);
-  params.velocity_change_cost_coefficient = 1.0;
+      MakeOptimizer(params, evaluation_params).optimize(nodes, {}, goal);
+  evaluation_params.velocity_change_cost_coefficient = 1.0;
   const std::vector<Node> penalized =
-      Optimizer(params).optimize(nodes, {}, goal);
+      MakeOptimizer(params, evaluation_params).optimize(nodes, {}, goal);
 
   assert(SquaredVelocityChanges(penalized) <
          SquaredVelocityChanges(unpenalized));
