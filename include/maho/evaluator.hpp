@@ -7,7 +7,8 @@ class Evaluator {
  public:
   explicit Evaluator(const EvaluationFunction& evaluation_function);
 
-  double evaluate(const Nodes& nodes, const Env& env, const Goal& goal) const;
+  double evaluate(const Nodes& nodes, const Pose2D& initial_pose, double dt,
+                  const Env& env, const Goal& goal) const;
 
  private:
   EvaluationFunction evaluation_function_;

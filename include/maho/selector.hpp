@@ -8,10 +8,11 @@
 #include <limits>
 #include <vector>
 
+#include "maho/kinematics.hpp"
 #include "maho/node.hpp"
 
-struct Path {
-  std::vector<Node> nodes;
+struct EvaluatedNodes {
+  Nodes nodes;
   double cost = std::numeric_limits<double>::infinity();
 };
 
@@ -26,13 +27,15 @@ class Selector {
   explicit Selector(const SelectorParams& params);
 
   template <std::size_t SelectedCount, std::size_t CandidateCount>
-  std::array<Path, SelectedCount> select(
-      const std::array<Path, CandidateCount>& candidates) const {
-    std::vector<Path> remaining;
+  std::array<EvaluatedNodes, SelectedCount> select(
+      const std::array<EvaluatedNodes, CandidateCount>& candidates,
+      const Pose2D& initial_pose, double dt) const {
+    std::vector<EvaluatedNodes> remaining;
     remaining.reserve(CandidateCount);
-    for (const Path& path : candidates) {
-      if (!path.nodes.empty() && std::isfinite(path.cost)) {
-        remaining.push_back(path);
+    for (const EvaluatedNodes& evaluated_nodes : candidates) {
+      if (!evaluated_nodes.nodes.empty() &&
+          std::isfinite(evaluated_nodes.cost)) {
+        remaining.push_back(evaluated_nodes);
       }
     }
 
@@ -45,7 +48,8 @@ class Selector {
           if (i != j) {
             nearest_distance = std::min(
                 nearest_distance,
-                terminalDistance(remaining[i], remaining[j]));
+                terminalDistance(remaining[i], remaining[j], initial_pose,
+                                 dt));
           }
         }
 
@@ -61,17 +65,19 @@ class Selector {
     }
 
     std::sort(remaining.begin(), remaining.end(),
-              [](const Path& lhs, const Path& rhs) {
+              [](const EvaluatedNodes& lhs, const EvaluatedNodes& rhs) {
                 return lhs.cost < rhs.cost;
               });
 
-    std::array<Path, SelectedCount> selected{};
+    std::array<EvaluatedNodes, SelectedCount> selected{};
     std::copy(remaining.begin(), remaining.end(), selected.begin());
     return selected;
   }
 
  private:
-  double terminalDistance(const Path& lhs, const Path& rhs) const;
+  double terminalDistance(const EvaluatedNodes& lhs,
+                          const EvaluatedNodes& rhs,
+                          const Pose2D& initial_pose, double dt) const;
 
   SelectorParams params_;
 };

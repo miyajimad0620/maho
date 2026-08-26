@@ -10,6 +10,7 @@ add_library(
   src/evaluator.cpp
   src/expander.cpp
   src/goal_velocity_cost.cpp
+  src/kinematics.cpp
   src/maho.cpp
   src/optimizer.cpp
   src/selector.cpp
@@ -33,6 +34,10 @@ if(BUILD_TESTING)
   add_executable(evaluator_test test/evaluator_test.cpp)
   target_link_libraries(evaluator_test PRIVATE maho)
   add_test(NAME evaluator_test COMMAND evaluator_test)
+
+  add_executable(expander_test test/expander_test.cpp)
+  target_link_libraries(expander_test PRIVATE maho)
+  add_test(NAME expander_test COMMAND expander_test)
 
   add_executable(selector_test test/selector_test.cpp)
   target_link_libraries(selector_test PRIVATE maho)

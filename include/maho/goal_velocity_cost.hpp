@@ -16,10 +16,11 @@ struct GoalVelocityCostParams {
   double max_angular_velocity;
 };
 
-double CalculateGoalVelocityCost(const Node& node, const Pose2D& goal,
+double CalculateGoalVelocityCost(const Twist2D& velocity,
+                                 const Pose2D& pose, const Pose2D& goal,
                                  const GoalVelocityCostParams& params);
 double CalculateTerminalGoalVelocityCost(
-    const Node& node, const Pose2D& goal,
+    const Twist2D& velocity, const Pose2D& pose, const Pose2D& goal,
     const GoalVelocityCostParams& params);
 
 #endif  // MAHO__GOAL_VELOCITY_COST_HPP_

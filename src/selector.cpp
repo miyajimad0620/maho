@@ -12,17 +12,23 @@ double AngleDifference(double lhs, double rhs) {
 
 Selector::Selector(const SelectorParams& params) : params_(params) {}
 
-double Selector::terminalDistance(const Path& lhs, const Path& rhs) const {
+double Selector::terminalDistance(const EvaluatedNodes& lhs,
+                                  const EvaluatedNodes& rhs,
+                                  const Pose2D& initial_pose, double dt) const {
+  const Pose2D lhs_pose =
+      CalculateTerminalPose(initial_pose, lhs.nodes, dt);
+  const Pose2D rhs_pose =
+      CalculateTerminalPose(initial_pose, rhs.nodes, dt);
   const Node& lhs_node = lhs.nodes.back();
   const Node& rhs_node = rhs.nodes.back();
   const double pose_distance = std::sqrt(
-      std::pow(lhs_node.pose.x - rhs_node.pose.x, 2) +
-      std::pow(lhs_node.pose.y - rhs_node.pose.y, 2) +
-      std::pow(AngleDifference(lhs_node.pose.theta, rhs_node.pose.theta), 2));
+      std::pow(lhs_pose.x - rhs_pose.x, 2) +
+      std::pow(lhs_pose.y - rhs_pose.y, 2) +
+      std::pow(AngleDifference(lhs_pose.theta, rhs_pose.theta), 2));
   const double velocity_distance = std::sqrt(
-      std::pow(lhs_node.twist.x - rhs_node.twist.x, 2) +
-      std::pow(lhs_node.twist.y - rhs_node.twist.y, 2) +
-      std::pow(lhs_node.twist.theta - rhs_node.twist.theta, 2));
+      std::pow(lhs_node.velocity.x - rhs_node.velocity.x, 2) +
+      std::pow(lhs_node.velocity.y - rhs_node.velocity.y, 2) +
+      std::pow(lhs_node.velocity.theta - rhs_node.velocity.theta, 2));
   return params_.pose_coefficient * pose_distance +
          params_.velocity_coefficient * velocity_distance;
 }

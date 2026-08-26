@@ -1,6 +1,8 @@
 #ifndef MAHO__NODE_HPP_
 #define MAHO__NODE_HPP_
 
+#include <vector>
+
 struct Twist2D {
   double x;
   double y;
@@ -14,8 +16,9 @@ struct Pose2D {
 };
 
 struct Node {
-  Pose2D pose;
-  Twist2D twist;
+  Twist2D velocity;
 };
+
+using Nodes = std::vector<Node>;
 
 #endif  // MAHO__NODE_HPP_
