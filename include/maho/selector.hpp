@@ -8,13 +8,10 @@
 #include <limits>
 #include <vector>
 
+#include "maho/env.hpp"
+#include "maho/evaluation_function.hpp"
 #include "maho/kinematics.hpp"
 #include "maho/node.hpp"
-
-struct EvaluatedNodes {
-  Nodes nodes;
-  double cost = std::numeric_limits<double>::infinity();
-};
 
 struct SelectorParams {
   double pose_coefficient;
@@ -24,18 +21,29 @@ struct SelectorParams {
 
 class Selector {
  public:
-  explicit Selector(const SelectorParams& params);
+  Selector(const SelectorParams& params,
+           const EvaluationFunction& evaluation_function);
 
   template <std::size_t SelectedCount, std::size_t CandidateCount>
-  std::array<EvaluatedNodes, SelectedCount> select(
-      const std::array<EvaluatedNodes, CandidateCount>& candidates,
-      const Pose2D& initial_pose, double dt) const {
-    std::vector<EvaluatedNodes> remaining;
+  std::array<Nodes, SelectedCount> select(
+      const std::array<Nodes, CandidateCount>& candidates,
+      const Pose2D& initial_pose, double dt, const Env& env,
+      const Goal& goal) const {
+    struct ScoredNodes {
+      Nodes nodes;
+      double cost;
+    };
+
+    std::vector<ScoredNodes> remaining;
     remaining.reserve(CandidateCount);
-    for (const EvaluatedNodes& evaluated_nodes : candidates) {
-      if (!evaluated_nodes.nodes.empty() &&
-          std::isfinite(evaluated_nodes.cost)) {
-        remaining.push_back(evaluated_nodes);
+    for (const Nodes& nodes : candidates) {
+      if (nodes.empty()) {
+        continue;
+      }
+      const double cost = evaluation_function_.evaluate(
+          nodes, initial_pose, dt, env, goal);
+      if (std::isfinite(cost)) {
+        remaining.push_back({nodes, cost});
       }
     }
 
@@ -48,8 +56,8 @@ class Selector {
           if (i != j) {
             nearest_distance = std::min(
                 nearest_distance,
-                terminalDistance(remaining[i], remaining[j], initial_pose,
-                                 dt));
+                terminalDistance(remaining[i].nodes, remaining[j].nodes,
+                                 initial_pose, dt));
           }
         }
 
@@ -65,21 +73,24 @@ class Selector {
     }
 
     std::sort(remaining.begin(), remaining.end(),
-              [](const EvaluatedNodes& lhs, const EvaluatedNodes& rhs) {
+              [](const ScoredNodes& lhs, const ScoredNodes& rhs) {
                 return lhs.cost < rhs.cost;
               });
 
-    std::array<EvaluatedNodes, SelectedCount> selected{};
-    std::copy(remaining.begin(), remaining.end(), selected.begin());
+    std::array<Nodes, SelectedCount> selected{};
+    std::transform(remaining.begin(), remaining.end(), selected.begin(),
+                   [](const ScoredNodes& scored_nodes) {
+                     return scored_nodes.nodes;
+                   });
     return selected;
   }
 
  private:
-  double terminalDistance(const EvaluatedNodes& lhs,
-                          const EvaluatedNodes& rhs,
+  double terminalDistance(const Nodes& lhs, const Nodes& rhs,
                           const Pose2D& initial_pose, double dt) const;
 
   SelectorParams params_;
+  EvaluationFunction evaluation_function_;
 };
 
 #endif  // MAHO__SELECTOR_HPP_

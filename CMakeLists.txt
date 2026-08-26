@@ -6,8 +6,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(
   maho
+  src/collision_detector.cpp
   src/evaluation_function.cpp
-  src/evaluator.cpp
   src/expander.cpp
   src/goal_velocity_cost.cpp
   src/kinematics.cpp
@@ -31,9 +31,13 @@ target_link_libraries(maho_example PRIVATE maho)
 include(CTest)
 
 if(BUILD_TESTING)
-  add_executable(evaluator_test test/evaluator_test.cpp)
-  target_link_libraries(evaluator_test PRIVATE maho)
-  add_test(NAME evaluator_test COMMAND evaluator_test)
+  add_executable(collision_detector_test test/collision_detector_test.cpp)
+  target_link_libraries(collision_detector_test PRIVATE maho)
+  add_test(NAME collision_detector_test COMMAND collision_detector_test)
+
+  add_executable(evaluation_function_test test/evaluation_function_test.cpp)
+  target_link_libraries(evaluation_function_test PRIVATE maho)
+  add_test(NAME evaluation_function_test COMMAND evaluation_function_test)
 
   add_executable(expander_test test/expander_test.cpp)
   target_link_libraries(expander_test PRIVATE maho)

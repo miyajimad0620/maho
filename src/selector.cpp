@@ -10,17 +10,18 @@ double AngleDifference(double lhs, double rhs) {
 
 }  // namespace
 
-Selector::Selector(const SelectorParams& params) : params_(params) {}
+Selector::Selector(const SelectorParams& params,
+                   const EvaluationFunction& evaluation_function)
+    : params_(params), evaluation_function_(evaluation_function) {}
 
-double Selector::terminalDistance(const EvaluatedNodes& lhs,
-                                  const EvaluatedNodes& rhs,
+double Selector::terminalDistance(const Nodes& lhs, const Nodes& rhs,
                                   const Pose2D& initial_pose, double dt) const {
   const Pose2D lhs_pose =
-      CalculateTerminalPose(initial_pose, lhs.nodes, dt);
+      CalculateTerminalPose(initial_pose, lhs, dt);
   const Pose2D rhs_pose =
-      CalculateTerminalPose(initial_pose, rhs.nodes, dt);
-  const Node& lhs_node = lhs.nodes.back();
-  const Node& rhs_node = rhs.nodes.back();
+      CalculateTerminalPose(initial_pose, rhs, dt);
+  const Node& lhs_node = lhs.back();
+  const Node& rhs_node = rhs.back();
   const double pose_distance = std::sqrt(
       std::pow(lhs_pose.x - rhs_pose.x, 2) +
       std::pow(lhs_pose.y - rhs_pose.y, 2) +

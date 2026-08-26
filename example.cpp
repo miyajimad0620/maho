@@ -79,8 +79,12 @@ void PrintNodeSequences(std::size_t position_update_count,
   std::cout << "\n"
             << "    command_velocity: ";
   PrintVelocity(command.velocity);
-  std::cout << "\n"
-            << "    node_sequences:\n";
+  std::cout << "\n";
+  if (node_sequences.empty()) {
+    std::cout << "    node_sequences: []\n";
+    return;
+  }
+  std::cout << "    node_sequences:\n";
 
   for (std::size_t rank = 0; rank < node_sequences.size(); ++rank) {
     std::cout << "      - rank: " << rank << "\n";
@@ -112,7 +116,7 @@ int main() {
       {0.0, 0.0, 0.0},
       {{0.0, 0.0, 0.0}},
       // {{2.0, 1.0}, {4.0, -1.0}, {6.0, 1.0}, {5.0, 0.0}},
-      {{1.5, 0.1}, {2.0, 0.1}, {2.5, 0.1}, {3.0, 0.1}, {3.5, 0.1}, {4.0, 0.1},{4.5, 0.1},  },
+      {{2.5, 0.1}, {3.0, 0.1}, {3.5, 0.1}, {4.0, 0.1},{4.5, 0.1}, {5.0, 0.1},  },
       {8.0, 0.0, 0.0},
       kPredictionDt,
       2,
@@ -123,8 +127,8 @@ int main() {
   const EvaluationFunction evaluation_function(
       {2.5, 0.75, 0.25, 5.0, 0.2, 0.1,
        {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5}});
-  const Evaluator evaluator(evaluation_function);
-  const Selector selector({1.0, 0.5, 0.2});
+  const CollisionDetector collision_detector({0.25});
+  const Selector selector({1.0, 0.5, 0.2}, evaluation_function);
   const Optimizer optimizer({
       0.02,
       1e-4,
@@ -132,11 +136,12 @@ int main() {
       {0.2, 0.2, 0.15},
   }, evaluation_function);
 
-  Maho maho(params, expander, evaluator, selector, optimizer);
+  Maho maho(params, expander, collision_detector, selector, optimizer);
   Pose2D current_pose = params.initial_pose;
   const Maho::NodeSequences initial_node_sequences = maho.get_nodes();
   Node command = params.initial_node;
-  if (!initial_node_sequences.front().empty()) {
+  if (!initial_node_sequences.empty() &&
+      !initial_node_sequences.front().empty()) {
     command = initial_node_sequences.front().front();
   }
 
@@ -153,7 +158,7 @@ int main() {
     if (update_count % kReplanPositionUpdateInterval == 0) {
       maho.replan(current_pose);
       const Maho::NodeSequences node_sequences = maho.get_nodes();
-      if (!node_sequences.front().empty()) {
+      if (!node_sequences.empty() && !node_sequences.front().empty()) {
         command = node_sequences.front().front();
       }
       PrintNodeSequences(update_count, current_pose, command,

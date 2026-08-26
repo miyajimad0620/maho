@@ -3,9 +3,10 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
+#include "maho/collision_detector.hpp"
 #include "maho/env.hpp"
-#include "maho/evaluator.hpp"
 #include "maho/expander.hpp"
 #include "maho/optimizer.hpp"
 #include "maho/selector.hpp"
@@ -32,10 +33,10 @@ class Maho {
  public:
   static constexpr std::size_t kNodeSequenceCount = 10;
   static constexpr std::size_t kNodeSequenceLength = 20;
-  using NodeSequences = std::array<Nodes, kNodeSequenceCount>;
+  using NodeSequences = std::vector<Nodes>;
 
   Maho(const MahoParams& params, const Expander& expander,
-       const Evaluator& evaluator, const Selector& selector,
+       const CollisionDetector& collision_detector, const Selector& selector,
        const Optimizer& optimizer);
 
   void replan(const Pose2D& pose);
@@ -44,16 +45,13 @@ class Maho {
   NodeSequences get_nodes() const;
 
  private:
+  using StoredNodeSequences = std::array<Nodes, kNodeSequenceCount>;
   static constexpr std::size_t kCandidateCount =
       kNodeSequenceCount * Expander::kExpansionCount;
-  using EvaluatedNodeSequences =
-      std::array<EvaluatedNodes, kNodeSequenceCount>;
-  using Candidates = std::array<EvaluatedNodes, kCandidateCount>;
+  using Candidates = std::array<Nodes, kCandidateCount>;
 
   Candidates expandNodes() const;
-  void optimize(EvaluatedNodes* evaluated_nodes,
-                std::size_t optimization_count) const;
-  void evaluate(EvaluatedNodes* evaluated_nodes) const;
+  void optimize(Nodes* nodes, std::size_t optimization_count) const;
   void sortNodes();
 
   Pose2D current_pose_;
@@ -64,10 +62,10 @@ class Maho {
   std::size_t pose_update_optimization_count_;
   GoalReachedParams goal_reached_;
   Expander expander_;
-  Evaluator evaluator_;
+  CollisionDetector collision_detector_;
   Selector selector_;
   Optimizer optimizer_;
-  EvaluatedNodeSequences evaluated_nodes_{};
+  StoredNodeSequences node_sequences_{};
 };
 
 #endif  // MAHO__MAHO_HPP_

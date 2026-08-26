@@ -42,8 +42,7 @@ EvaluationFunction::EvaluationFunction(const EvaluationFunctionParams& params)
 
 double EvaluationFunction::evaluate(
     const Nodes& nodes, const Pose2D& initial_pose, double dt,
-    const Env& env, const Goal& goal,
-    CollisionHandling collision_handling) const {
+    const Env& env, const Goal& goal) const {
   if (dt <= 0.0) {
     throw std::invalid_argument("invalid evaluation dt");
   }
@@ -63,10 +62,6 @@ double EvaluationFunction::evaluate(
           std::hypot(pose.x - point.x, pose.y - point.y));
     }
 
-    if (nearest_distance <= params_.robot_radius &&
-        collision_handling == CollisionHandling::kReturnInfinity) {
-      return std::numeric_limits<double>::infinity();
-    }
     if (std::isfinite(nearest_distance)) {
       const double clearance = nearest_distance - params_.robot_radius;
       const double penetration =

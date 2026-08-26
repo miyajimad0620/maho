@@ -1,4 +1,4 @@
-#include "maho/evaluator.hpp"
+#include "maho/evaluation_function.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -68,50 +68,35 @@ void TestUsesIntegratedPose() {
       0.0));
 }
 
-void TestSwitchesCollisionHandlingAtIntegratedPose() {
+void TestReturnsFiniteCostForCollision() {
   const EvaluationFunction evaluation_function({2.0, 3.0, 1.0, 0.0,
                                                   0.0, 0.0});
   const Node moving{{1.0, 0.0, 0.0}};
-  const Pose2D initial_pose{0.0, 0.0, 0.0};
-  const Pose2D goal{0.0, 0.0, 0.0};
 
-  assert(std::isinf(evaluation_function.evaluate(
-      {moving}, initial_pose, 1.0, {{1.5, 0.0}}, goal,
-      CollisionHandling::kReturnInfinity)));
   assert(IsNear(evaluation_function.evaluate(
-                    {moving}, initial_pose, 1.0, {{1.5, 0.0}}, goal,
-                    CollisionHandling::kUseFiniteCost),
+                    {moving}, {0.0, 0.0, 0.0}, 1.0, {{1.5, 0.0}}, {}),
                 24.5));
 }
 
-void TestEvaluatorReturnsInfinityForCollision() {
-  const Evaluator evaluator(
-      EvaluationFunction({2.0, 3.0, 1.0, 0.0, 0.0, 0.0}));
-  const Pose2D initial_pose{0.0, 0.0, 0.0};
-  const Pose2D goal{0.0, 0.0, 0.0};
-
-  assert(std::isinf(evaluator.evaluate({}, initial_pose, 1.0, {}, goal)));
-  assert(std::isinf(evaluator.evaluate(
-      {{{1.0, 0.0, 0.0}}}, initial_pose, 1.0, {{1.5, 0.0}}, goal)));
-}
-
 void TestAddsGoalVelocityCostForAllNodes() {
-  const Evaluator evaluator(
-      MakeEvaluationFunction({2.0, 0.5, 1.5, 3.0, 0.1}));
+  const EvaluationFunction evaluation_function =
+      MakeEvaluationFunction({2.0, 0.5, 1.5, 3.0, 0.1});
   const Nodes nodes{{{0.0, 0.0, 0.0}}, {{1.0, 0.0, 0.0}}};
 
-  assert(IsNear(evaluator.evaluate(nodes, {0.0, 0.0, 0.0}, 1.0, {},
-                                    {10.0, 0.0, 0.0}),
+  assert(IsNear(evaluation_function.evaluate(
+                    nodes, {0.0, 0.0, 0.0}, 1.0, {},
+                    {10.0, 0.0, 0.0}),
                 2.5));
 }
 
 void TestPenalizesTranslationalSpeedWithinGoalTolerance() {
-  const Evaluator evaluator(
-      MakeEvaluationFunction({2.0, 0.5, 1.5, 3.0, 0.1}));
+  const EvaluationFunction evaluation_function =
+      MakeEvaluationFunction({2.0, 0.5, 1.5, 3.0, 0.1});
   const Node node{{3.0, 4.0, 0.0}};
 
-  assert(IsNear(evaluator.evaluate({node}, {6.95, -4.0, 0.0}, 1.0, {},
-                                    {10.0, 0.0, 0.0}),
+  assert(IsNear(evaluation_function.evaluate(
+                    {node}, {6.95, -4.0, 0.0}, 1.0, {},
+                    {10.0, 0.0, 0.0}),
                 50.0));
 }
 
@@ -139,32 +124,34 @@ void TestRejectsInvalidDt() {
 }
 
 void TestAddsTerminalVelocityCost() {
-  const Evaluator evaluator(
-      MakeEvaluationFunction({0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 5.0}));
+  const EvaluationFunction evaluation_function =
+      MakeEvaluationFunction({0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 5.0});
   const Node node{{3.0, 4.0, 2.0}};
 
-  assert(IsNear(evaluator.evaluate({node}, {-3.0, -4.0, 0.0}, 1.0, {},
-                                    {0.0, 0.0, 0.0}),
+  assert(IsNear(evaluation_function.evaluate(
+                    {node}, {-3.0, -4.0, 0.0}, 1.0, {}, {}),
                 120.0));
 }
 
 void TestAddsDistanceBasedAngularVelocityCost() {
-  const Evaluator evaluator(MakeEvaluationFunction(
-      {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 1.0, 1.5}));
+  const EvaluationFunction evaluation_function = MakeEvaluationFunction(
+      {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 1.0, 1.5});
   const Node node{{0.0, 0.0, 0.5}};
 
-  assert(IsNear(evaluator.evaluate({node}, {0.0, 0.0, 0.0}, 1.0, {},
-                                    {10.0, 0.0, 0.0}),
+  assert(IsNear(evaluation_function.evaluate(
+                    {node}, {0.0, 0.0, 0.0}, 1.0, {},
+                    {10.0, 0.0, 0.0}),
                 2.0));
 }
 
 void TestDoesNotAddTerminalVelocityCostFarFromGoal() {
-  const Evaluator evaluator(
-      MakeEvaluationFunction({0.0, 0.5, 1.0, 0.0, 0.1, 4.0, 5.0}));
+  const EvaluationFunction evaluation_function =
+      MakeEvaluationFunction({0.0, 0.5, 1.0, 0.0, 0.1, 4.0, 5.0});
   const Node node{{3.0, 4.0, 2.0}};
 
-  assert(IsNear(evaluator.evaluate({node}, {0.0, 0.0, 0.0}, 1.0, {},
-                                    {10.0, 0.0, 0.0}),
+  assert(IsNear(evaluation_function.evaluate(
+                    {node}, {0.0, 0.0, 0.0}, 1.0, {},
+                    {10.0, 0.0, 0.0}),
                 0.0));
 }
 
@@ -173,8 +160,7 @@ void TestDoesNotAddTerminalVelocityCostFarFromGoal() {
 int main() {
   TestCalculatesSharedCosts();
   TestUsesIntegratedPose();
-  TestSwitchesCollisionHandlingAtIntegratedPose();
-  TestEvaluatorReturnsInfinityForCollision();
+  TestReturnsFiniteCostForCollision();
   TestAddsGoalVelocityCostForAllNodes();
   TestPenalizesTranslationalSpeedWithinGoalTolerance();
   TestRejectsNegativeParameter();

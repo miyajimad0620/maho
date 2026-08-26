@@ -14,11 +14,12 @@ EvaluationFunction MakeEvaluationFunction() {
 }
 
 Maho MakeMaho(std::size_t replan_optimization_count = 0,
-              std::size_t pose_update_optimization_count = 0) {
+              std::size_t pose_update_optimization_count = 0,
+              const Env& env = {}, double robot_radius = 0.1) {
   const MahoParams params{
       {0.0, 0.0, 0.0},
       {{0.0, 0.0, 0.0}},
-      {},
+      env,
       {3.0, 1.0, 0.2},
       0.2,
       replan_optimization_count,
@@ -27,15 +28,15 @@ Maho MakeMaho(std::size_t replan_optimization_count = 0,
   };
   const Expander expander(ExpanderParams{{0.2, 0.2, 0.1}});
   const EvaluationFunction evaluation_function = MakeEvaluationFunction();
-  const Evaluator evaluator(evaluation_function);
-  const Selector selector({1.0, 0.5, 0.2});
+  const CollisionDetector collision_detector({robot_radius});
+  const Selector selector({1.0, 0.5, 0.2}, evaluation_function);
   const Optimizer optimizer({
       0.02,
       1e-4,
       {2.0, 2.0, 1.0},
       {0.2, 0.2, 0.1},
   }, evaluation_function);
-  return Maho(params, expander, evaluator, selector, optimizer);
+  return Maho(params, expander, collision_detector, selector, optimizer);
 }
 
 bool IsSameNode(const Node& lhs, const Node& rhs) {
@@ -151,6 +152,16 @@ void TestReplanRunsConfiguredOptimizationCount() {
   AssertFixedSize(after);
 }
 
+void TestGetNodesFiltersCollisionsWithoutDiscardingStoredPaths() {
+  Maho maho = MakeMaho(0, 0, {{0.0, 0.0}}, 0.1);
+
+  assert(maho.get_nodes().empty());
+
+  maho.update_pose({10.0, 0.0, 0.0});
+
+  AssertFixedSize(maho.get_nodes());
+}
+
 void TestDetectsGoalReached() {
   const Maho maho = MakeMaho();
   constexpr double kTwoPi = 6.28318530717958647692;
@@ -177,7 +188,8 @@ void TestRejectsInvalidDt() {
          0,
          {0.1, 0.1, 0.1, 0.1}},
         Expander(ExpanderParams{{0.1, 0.1, 0.1}}),
-        Evaluator(evaluation_function), Selector({1.0, 1.0, 1.0}),
+        CollisionDetector({0.1}),
+        Selector({1.0, 1.0, 1.0}, evaluation_function),
         Optimizer({0.1, 1e-4, {1.0, 1.0, 1.0}, {1.0, 1.0, 1.0}},
                   evaluation_function));
   } catch (const std::invalid_argument&) {
@@ -194,6 +206,7 @@ int main() {
   TestUpdatePosePreservesNodesWhenOptimizationIsDisabled();
   TestUpdatePoseRunsConfiguredOptimizationCount();
   TestReplanRunsConfiguredOptimizationCount();
+  TestGetNodesFiltersCollisionsWithoutDiscardingStoredPaths();
   TestDetectsGoalReached();
   TestRejectsInvalidDt();
 }

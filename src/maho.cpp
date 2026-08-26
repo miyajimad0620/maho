@@ -1,11 +1,11 @@
 #include "maho/maho.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
 Maho::Maho(const MahoParams& params, const Expander& expander,
-           const Evaluator& evaluator, const Selector& selector,
+           const CollisionDetector& collision_detector,
+           const Selector& selector,
            const Optimizer& optimizer)
     : current_pose_(params.initial_pose),
       env_(params.env),
@@ -15,7 +15,7 @@ Maho::Maho(const MahoParams& params, const Expander& expander,
       pose_update_optimization_count_(params.pose_update_optimization_count),
       goal_reached_(params.goal_reached),
       expander_(expander),
-      evaluator_(evaluator),
+      collision_detector_(collision_detector),
       selector_(selector),
       optimizer_(optimizer) {
   if (dt_ <= 0.0 || goal_reached_.position_tolerance < 0.0 ||
@@ -25,46 +25,43 @@ Maho::Maho(const MahoParams& params, const Expander& expander,
     throw std::invalid_argument("invalid maho parameter");
   }
 
-  evaluated_nodes_[0].nodes.push_back(params.initial_node);
-  evaluate(&evaluated_nodes_[0]);
+  node_sequences_[0].push_back(params.initial_node);
 
   for (std::size_t node_count = 1; node_count < kNodeSequenceLength;
        node_count += Expander::kExpansionPathLength) {
     Candidates candidates = expandNodes();
-    for (EvaluatedNodes& candidate : candidates) {
-      if (candidate.nodes.empty()) {
+    for (Nodes& candidate : candidates) {
+      if (candidate.empty()) {
         continue;
       }
       optimize(&candidate, replan_optimization_count_);
-      if (candidate.nodes.size() > kNodeSequenceLength) {
-        candidate.nodes.resize(kNodeSequenceLength);
-        evaluate(&candidate);
+      if (candidate.size() > kNodeSequenceLength) {
+        candidate.resize(kNodeSequenceLength);
       }
     }
-    evaluated_nodes_ = selector_.select<kNodeSequenceCount>(
-        candidates, current_pose_, dt_);
+    node_sequences_ = selector_.select<kNodeSequenceCount>(
+        candidates, current_pose_, dt_, env_, goal_);
   }
 }
 
 void Maho::replan(const Pose2D& pose) {
   current_pose_ = pose;
   Candidates candidates = expandNodes();
-  for (EvaluatedNodes& candidate : candidates) {
-    if (candidate.nodes.empty()) {
+  for (Nodes& candidate : candidates) {
+    if (candidate.empty()) {
       continue;
     }
     optimize(&candidate, replan_optimization_count_);
-    candidate.nodes.resize(kNodeSequenceLength);
-    evaluate(&candidate);
+    candidate.resize(kNodeSequenceLength);
   }
-  evaluated_nodes_ = selector_.select<kNodeSequenceCount>(
-      candidates, current_pose_, dt_);
+  node_sequences_ = selector_.select<kNodeSequenceCount>(
+      candidates, current_pose_, dt_, env_, goal_);
 }
 
 void Maho::update_pose(const Pose2D& pose) {
   current_pose_ = pose;
-  for (EvaluatedNodes& evaluated_nodes : evaluated_nodes_) {
-    optimize(&evaluated_nodes, pose_update_optimization_count_);
+  for (Nodes& nodes : node_sequences_) {
+    optimize(&nodes, pose_update_optimization_count_);
   }
   sortNodes();
 }
@@ -86,8 +83,13 @@ bool Maho::is_goal_reached(const Pose2D& pose, const Node& node) const {
 
 Maho::NodeSequences Maho::get_nodes() const {
   NodeSequences nodes;
-  for (std::size_t i = 0; i < nodes.size(); ++i) {
-    nodes[i] = evaluated_nodes_[i].nodes;
+  nodes.reserve(kNodeSequenceCount);
+  for (const Nodes& candidate : node_sequences_) {
+    if (!candidate.empty() &&
+        !collision_detector_.detectsCollision(
+            candidate, current_pose_, dt_, env_)) {
+      nodes.push_back(candidate);
+    }
   }
   return nodes;
 }
@@ -95,43 +97,33 @@ Maho::NodeSequences Maho::get_nodes() const {
 Maho::Candidates Maho::expandNodes() const {
   Candidates candidates{};
   std::size_t candidate_index = 0;
-  for (const EvaluatedNodes& evaluated_nodes : evaluated_nodes_) {
-    if (evaluated_nodes.nodes.empty()) {
+  for (const Nodes& nodes : node_sequences_) {
+    if (nodes.empty()) {
       continue;
     }
 
     const Expander::ExpandedPaths expanded_paths =
-        expander_.expand(evaluated_nodes.nodes.back());
+        expander_.expand(nodes.back());
     for (const Expander::ExpansionPath& expanded_path : expanded_paths) {
-      EvaluatedNodes& candidate = candidates[candidate_index++];
-      candidate.nodes = evaluated_nodes.nodes;
-      candidate.nodes.insert(candidate.nodes.end(), expanded_path.begin(),
-                             expanded_path.end());
+      Nodes& candidate = candidates[candidate_index++];
+      candidate = nodes;
+      candidate.insert(candidate.end(), expanded_path.begin(),
+                       expanded_path.end());
     }
   }
   return candidates;
 }
 
-void Maho::optimize(EvaluatedNodes* evaluated_nodes,
-                    std::size_t optimization_count) const {
-  if (evaluated_nodes->nodes.empty()) {
+void Maho::optimize(Nodes* nodes, std::size_t optimization_count) const {
+  if (nodes->empty()) {
     return;
   }
   for (std::size_t i = 0; i < optimization_count; ++i) {
-    evaluated_nodes->nodes = optimizer_.optimize(
-        evaluated_nodes->nodes, current_pose_, dt_, env_, goal_);
+    *nodes = optimizer_.optimize(*nodes, current_pose_, dt_, env_, goal_);
   }
-  evaluate(evaluated_nodes);
-}
-
-void Maho::evaluate(EvaluatedNodes* evaluated_nodes) const {
-  evaluated_nodes->cost = evaluator_.evaluate(
-      evaluated_nodes->nodes, current_pose_, dt_, env_, goal_);
 }
 
 void Maho::sortNodes() {
-  std::sort(evaluated_nodes_.begin(), evaluated_nodes_.end(),
-            [](const EvaluatedNodes& lhs, const EvaluatedNodes& rhs) {
-              return lhs.cost < rhs.cost;
-            });
+  node_sequences_ = selector_.select<kNodeSequenceCount>(
+      node_sequences_, current_pose_, dt_, env_, goal_);
 }

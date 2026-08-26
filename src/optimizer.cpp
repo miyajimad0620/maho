@@ -44,8 +44,7 @@ Nodes Optimizer::optimize(const Nodes& nodes, const Pose2D& initial_pose,
 
   Nodes next = optimized;
   const double current_cost = evaluation_function_.evaluate(
-      optimized, initial_pose, dt, env, goal,
-      CollisionHandling::kUseFiniteCost);
+      optimized, initial_pose, dt, env, goal);
   for (std::size_t i = 0; i < optimized.size(); ++i) {
     for (double Twist2D::*component : {&Twist2D::x, &Twist2D::y,
                                       &Twist2D::theta}) {
@@ -56,11 +55,9 @@ Nodes Optimizer::optimize(const Nodes& nodes, const Pose2D& initial_pose,
       enforceVelocityConstraints(&lower);
       enforceVelocityConstraints(&upper);
       const double lower_cost = evaluation_function_.evaluate(
-          lower, initial_pose, dt, env, goal,
-          CollisionHandling::kUseFiniteCost);
+          lower, initial_pose, dt, env, goal);
       const double upper_cost = evaluation_function_.evaluate(
-          upper, initial_pose, dt, env, goal,
-          CollisionHandling::kUseFiniteCost);
+          upper, initial_pose, dt, env, goal);
       double gradient =
           (upper_cost - lower_cost) /
           (2.0 * params_.finite_difference_step);

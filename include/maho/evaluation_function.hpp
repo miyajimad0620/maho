@@ -17,19 +17,12 @@ struct EvaluationFunctionParams {
   GoalVelocityCostParams goal_velocity_cost{};
 };
 
-enum class CollisionHandling {
-  kReturnInfinity,
-  kUseFiniteCost,
-};
-
 class EvaluationFunction {
  public:
   explicit EvaluationFunction(const EvaluationFunctionParams& params);
 
   double evaluate(const Nodes& nodes, const Pose2D& initial_pose, double dt,
-                  const Env& env, const Goal& goal,
-                  CollisionHandling collision_handling =
-                      CollisionHandling::kReturnInfinity) const;
+                  const Env& env, const Goal& goal) const;
 
  private:
   EvaluationFunctionParams params_;
