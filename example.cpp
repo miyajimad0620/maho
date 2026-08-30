@@ -10,7 +10,7 @@
 
 namespace {
 
-constexpr std::size_t kPositionUpdateCount = 500;
+constexpr std::size_t kPositionUpdateCount = 50;
 constexpr std::size_t kReplanPositionUpdateInterval = 10;
 constexpr double kPositionUpdateDt = 0.02;
 constexpr double kPredictionDt = 0.2;
@@ -71,7 +71,8 @@ void PrintGoal(const Goal& goal) {
 
 void PrintNodeSequences(std::size_t position_update_count,
                         const Pose2D& current_pose, const Node& command,
-                        const Maho::NodeSequences& node_sequences) {
+                        double first_dt,
+                        const Maho::NodeSequenceStatuses& node_sequences) {
   std::cout << "  - position_update_count: " << position_update_count
             << "\n"
             << "    current_pose: ";
@@ -87,16 +88,22 @@ void PrintNodeSequences(std::size_t position_update_count,
   std::cout << "    node_sequences:\n";
 
   for (std::size_t rank = 0; rank < node_sequences.size(); ++rank) {
-    std::cout << "      - rank: " << rank << "\n";
-    if (node_sequences[rank].empty()) {
+    const Maho::NodeSequenceStatus& status = node_sequences[rank];
+    std::cout << "      - rank: " << rank << "\n"
+              << "        collides: "
+              << (status.collides ? "true" : "false") << "\n";
+    if (status.nodes.empty()) {
       std::cout << "        nodes: []\n";
       continue;
     }
 
     std::cout << "        nodes:\n";
     Pose2D pose = current_pose;
-    for (const Node& node : node_sequences[rank]) {
-      pose = IntegratePose(pose, node.velocity, kPredictionDt);
+    for (std::size_t node_index = 0;
+         node_index < status.nodes.size(); ++node_index) {
+      const Node& node = status.nodes[node_index];
+      pose = IntegratePose(pose, node.velocity,
+                           node_index == 0 ? first_dt : kPredictionDt);
       std::cout << "          - pose: ";
       PrintPose(pose);
       std::cout << "\n"
@@ -110,7 +117,7 @@ void PrintNodeSequences(std::size_t position_update_count,
 }  // namespace
 
 int main() {
-  std::cout << std::setprecision(17);
+  std::cout << std::fixed << std::setprecision(2);
 
   const MahoParams params{
       {0.0, 0.0, 0.0},
@@ -130,40 +137,50 @@ int main() {
   const CollisionDetector collision_detector({0.25});
   const Selector selector({1.0, 0.5, 0.2}, evaluation_function);
   const Optimizer optimizer({
-      0.02,
-      1e-4,
+      0.002,
+      1e-3,
       {2.0, 2.0, 1.5},
       {0.2, 0.2, 0.15},
   }, evaluation_function);
 
   Maho maho(params, expander, collision_detector, selector, optimizer);
   Pose2D current_pose = params.initial_pose;
-  const Maho::NodeSequences initial_node_sequences = maho.get_nodes();
+  const Maho::NodeSequences initial_safe_node_sequences = maho.get_nodes();
+  const Maho::NodeSequenceStatuses initial_node_sequences =
+      maho.get_node_sequences_with_status();
   Node command = params.initial_node;
-  if (!initial_node_sequences.empty() &&
-      !initial_node_sequences.front().empty()) {
-    command = initial_node_sequences.front().front();
+  if (!initial_safe_node_sequences.empty() &&
+      !initial_safe_node_sequences.front().empty()) {
+    command = initial_safe_node_sequences.front().front();
   }
 
   PrintObstacles(params.env);
   PrintGoal(params.goal);
   std::cout << "position_updates:\n";
-  PrintNodeSequences(0, current_pose, command, initial_node_sequences);
+  PrintNodeSequences(0, current_pose, command, kPredictionDt,
+                     initial_node_sequences);
+  double dt_replan = 0.0;
   for (std::size_t update_count = 1;
        update_count <= kPositionUpdateCount; ++update_count) {
     current_pose = IntegratePose(current_pose, command.velocity,
                                  kPositionUpdateDt);
-    maho.update_pose(current_pose);
+    dt_replan = std::min(kPredictionDt, dt_replan + kPositionUpdateDt);
+    maho.update_pose(current_pose, dt_replan);
 
     if (update_count % kReplanPositionUpdateInterval == 0) {
       maho.replan(current_pose);
-      const Maho::NodeSequences node_sequences = maho.get_nodes();
-      if (!node_sequences.empty() && !node_sequences.front().empty()) {
-        command = node_sequences.front().front();
+      dt_replan = 0.0;
+      const Maho::NodeSequences safe_node_sequences = maho.get_nodes();
+      if (!safe_node_sequences.empty() &&
+          !safe_node_sequences.front().empty()) {
+        command = safe_node_sequences.front().front();
       }
-      PrintNodeSequences(update_count, current_pose, command,
-                         node_sequences);
     }
+
+    const Maho::NodeSequenceStatuses node_sequences =
+        maho.get_node_sequences_with_status();
+    PrintNodeSequences(update_count, current_pose, command,
+                       kPredictionDt - dt_replan, node_sequences);
 
     if (maho.is_goal_reached(current_pose, command)) {
       break;

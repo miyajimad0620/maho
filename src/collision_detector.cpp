@@ -1,9 +1,10 @@
 #include "maho/collision_detector.hpp"
 
-#include <cmath>
+#include <cstddef>
 #include <stdexcept>
 
 #include "maho/kinematics.hpp"
+#include "trajectory.hpp"
 
 CollisionDetector::CollisionDetector(const CollisionDetectorParams& params)
     : params_(params) {
@@ -14,20 +15,24 @@ CollisionDetector::CollisionDetector(const CollisionDetectorParams& params)
 
 bool CollisionDetector::detectsCollision(
     const Nodes& nodes, const Pose2D& initial_pose, double dt,
-    const Env& env) const {
-  if (dt <= 0.0) {
+    double first_dt, const Env& env) const {
+  if (!(dt > 0.0) || !(first_dt >= 0.0 && first_dt <= dt)) {
     throw std::invalid_argument("invalid collision detection dt");
   }
 
   Pose2D pose = initial_pose;
-  for (const Node& node : nodes) {
-    pose = IntegratePose(pose, node.velocity, dt);
+  for (std::size_t i = 0; i < nodes.size(); ++i) {
+    const Node& node = nodes[i];
+    const double duration = i == 0 ? first_dt : dt;
+    const Trajectory2D trajectory =
+        CalculateTrajectory(pose, node.velocity, duration);
     for (const Point2D& point : env) {
-      if (std::hypot(pose.x - point.x, pose.y - point.y) <=
+      if (CalculateMinimumDistanceToTrajectory(trajectory, point) <=
           params_.robot_radius) {
         return true;
       }
     }
+    pose = trajectory.terminal_pose;
   }
   return false;
 }

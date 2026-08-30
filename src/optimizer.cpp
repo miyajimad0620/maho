@@ -34,30 +34,38 @@ Optimizer::Optimizer(const OptimizerParams& params,
 }
 
 Nodes Optimizer::optimize(const Nodes& nodes, const Pose2D& initial_pose,
-                          double dt, const Env& env,
-                          const Pose2D& goal) const {
+                          double dt, double first_dt, const Env& env,
+                          const Pose2D& goal,
+                          std::size_t fixed_node_count) const {
+  if (!(dt > 0.0) || !(first_dt >= 0.0 && first_dt <= dt)) {
+    throw std::invalid_argument("invalid optimization dt");
+  }
+  if (fixed_node_count > nodes.size()) {
+    throw std::invalid_argument("invalid fixed node count");
+  }
+
   Nodes optimized = nodes;
-  enforceVelocityConstraints(&optimized);
+  enforceVelocityConstraints(&optimized, fixed_node_count);
   if (nodes.empty()) {
     return optimized;
   }
 
   Nodes next = optimized;
   const double current_cost = evaluation_function_.evaluate(
-      optimized, initial_pose, dt, env, goal);
-  for (std::size_t i = 0; i < optimized.size(); ++i) {
+      optimized, initial_pose, dt, first_dt, env, goal);
+  for (std::size_t i = fixed_node_count; i < optimized.size(); ++i) {
     for (double Twist2D::*component : {&Twist2D::x, &Twist2D::y,
                                       &Twist2D::theta}) {
       Nodes lower = optimized;
       Nodes upper = optimized;
       lower[i].velocity.*component -= params_.finite_difference_step;
       upper[i].velocity.*component += params_.finite_difference_step;
-      enforceVelocityConstraints(&lower);
-      enforceVelocityConstraints(&upper);
+      enforceVelocityConstraints(&lower, fixed_node_count);
+      enforceVelocityConstraints(&upper, fixed_node_count);
       const double lower_cost = evaluation_function_.evaluate(
-          lower, initial_pose, dt, env, goal);
+          lower, initial_pose, dt, first_dt, env, goal);
       const double upper_cost = evaluation_function_.evaluate(
-          upper, initial_pose, dt, env, goal);
+          upper, initial_pose, dt, first_dt, env, goal);
       double gradient =
           (upper_cost - lower_cost) /
           (2.0 * params_.finite_difference_step);
@@ -70,12 +78,13 @@ Nodes Optimizer::optimize(const Nodes& nodes, const Pose2D& initial_pose,
       next[i].velocity.*component -= params_.learning_rate * gradient;
     }
   }
-  enforceVelocityConstraints(&next);
+  enforceVelocityConstraints(&next, fixed_node_count);
   return next;
 }
 
-void Optimizer::enforceVelocityConstraints(Nodes* nodes) const {
-  for (std::size_t i = 0; i < nodes->size(); ++i) {
+void Optimizer::enforceVelocityConstraints(
+    Nodes* nodes, std::size_t fixed_node_count) const {
+  for (std::size_t i = fixed_node_count; i < nodes->size(); ++i) {
     Twist2D& velocity = (*nodes)[i].velocity;
     if (i == 0) {
       velocity.x = std::clamp(velocity.x, -params_.max_velocity.x,

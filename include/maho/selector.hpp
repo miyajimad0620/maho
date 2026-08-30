@@ -24,11 +24,15 @@ class Selector {
   Selector(const SelectorParams& params,
            const EvaluationFunction& evaluation_function);
 
+  double evaluate(const Nodes& nodes, const Pose2D& initial_pose,
+                  double dt, double first_dt, const Env& env,
+                  const Goal& goal) const;
+
   template <std::size_t SelectedCount, std::size_t CandidateCount>
   std::array<Nodes, SelectedCount> select(
       const std::array<Nodes, CandidateCount>& candidates,
-      const Pose2D& initial_pose, double dt, const Env& env,
-      const Goal& goal) const {
+      const Pose2D& initial_pose, double dt, double first_dt,
+      const Env& env, const Goal& goal) const {
     struct ScoredNodes {
       Nodes nodes;
       double cost;
@@ -40,8 +44,8 @@ class Selector {
       if (nodes.empty()) {
         continue;
       }
-      const double cost = evaluation_function_.evaluate(
-          nodes, initial_pose, dt, env, goal);
+      const double cost = evaluate(nodes, initial_pose, dt, first_dt,
+                                   env, goal);
       if (std::isfinite(cost)) {
         remaining.push_back({nodes, cost});
       }
@@ -57,13 +61,12 @@ class Selector {
             nearest_distance = std::min(
                 nearest_distance,
                 terminalDistance(remaining[i].nodes, remaining[j].nodes,
-                                 initial_pose, dt));
+                                 initial_pose, dt, first_dt));
           }
         }
 
-        const double similarity = 1.0 / (1.0 + nearest_distance);
         const double priority =
-            params_.cost_coefficient * remaining[i].cost + similarity;
+            params_.cost_coefficient * remaining[i].cost - nearest_distance;
         if (priority > highest_priority) {
           highest_priority = priority;
           removal_index = i;
@@ -87,7 +90,8 @@ class Selector {
 
  private:
   double terminalDistance(const Nodes& lhs, const Nodes& rhs,
-                          const Pose2D& initial_pose, double dt) const;
+                          const Pose2D& initial_pose, double dt,
+                          double first_dt) const;
 
   SelectorParams params_;
   EvaluationFunction evaluation_function_;

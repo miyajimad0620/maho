@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "maho/kinematics.hpp"
+#include "trajectory.hpp"
 
 namespace {
 
@@ -42,8 +43,8 @@ EvaluationFunction::EvaluationFunction(const EvaluationFunctionParams& params)
 
 double EvaluationFunction::evaluate(
     const Nodes& nodes, const Pose2D& initial_pose, double dt,
-    const Env& env, const Goal& goal) const {
-  if (dt <= 0.0) {
+    double first_dt, const Env& env, const Goal& goal) const {
+  if (!(dt > 0.0) || !(first_dt >= 0.0 && first_dt <= dt)) {
     throw std::invalid_argument("invalid evaluation dt");
   }
   if (nodes.empty()) {
@@ -53,13 +54,16 @@ double EvaluationFunction::evaluate(
   double total = 0.0;
   double goal_velocity_cost = 0.0;
   Pose2D pose = initial_pose;
-  for (const Node& node : nodes) {
-    pose = IntegratePose(pose, node.velocity, dt);
+  for (std::size_t i = 0; i < nodes.size(); ++i) {
+    const Node& node = nodes[i];
+    const double duration = i == 0 ? first_dt : dt;
+    const Trajectory2D trajectory =
+        CalculateTrajectory(pose, node.velocity, duration);
     double nearest_distance = std::numeric_limits<double>::infinity();
     for (const Point2D& point : env) {
-      nearest_distance = std::min(
-          nearest_distance,
-          std::hypot(pose.x - point.x, pose.y - point.y));
+      nearest_distance = std::min(nearest_distance,
+                                  CalculateMinimumDistanceToTrajectory(
+                                      trajectory, point));
     }
 
     if (std::isfinite(nearest_distance)) {
@@ -69,6 +73,7 @@ double EvaluationFunction::evaluate(
       total += params_.obstacle_cost_coefficient * penetration * penetration;
     }
 
+    pose = trajectory.terminal_pose;
     goal_velocity_cost += CalculateGoalVelocityCost(
         node.velocity, pose, goal, params_.goal_velocity_cost);
   }

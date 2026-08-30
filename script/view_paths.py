@@ -21,6 +21,9 @@ except ImportError as error:
 
 PositionUpdate = Dict[str, Any]
 Point = Tuple[float, float]
+COLLISION_FREE_COLOR = "#0072B2"
+COLLIDING_COLOR = "#D55E00"
+OBSTACLE_COLOR = "#4D4D4D"
 
 
 def has_numeric_components(value: Any, components: Sequence[str]) -> bool:
@@ -103,12 +106,13 @@ def load_data(
             if (
                 not isinstance(node_sequence, dict)
                 or not isinstance(node_sequence.get("rank"), int)
+                or not isinstance(node_sequence.get("collides"), bool)
                 or not isinstance(node_sequence.get("nodes"), list)
             ):
                 raise ValueError(
                     f"every node sequence at position update "
-                    f"{position_update_count} must have an integer rank and a "
-                    "'nodes' list"
+                    f"{position_update_count} must have an integer rank, a "
+                    "boolean collides value, and a 'nodes' list"
                 )
             for node in node_sequence["nodes"]:
                 pose = node.get("pose") if isinstance(node, dict) else None
@@ -282,7 +286,7 @@ class NodeSequenceViewer:
             self.axes.scatter(
                 obstacle_xs,
                 obstacle_ys,
-                color="blue",
+                color=OBSTACLE_COLOR,
                 s=55,
                 zorder=4,
             )
@@ -300,7 +304,14 @@ class NodeSequenceViewer:
             for index, node_sequence in enumerate(node_sequences)
             if node_sequence["nodes"]
         ]
-        best_index = drawable_indices[0] if drawable_indices else None
+        best_index = next(
+            (
+                index
+                for index in drawable_indices
+                if not node_sequences[index]["collides"]
+            ),
+            None,
+        )
 
         draw_order = [index for index in drawable_indices if index != best_index]
         if best_index is not None:
@@ -318,7 +329,11 @@ class NodeSequenceViewer:
             self.axes.plot(
                 xs,
                 ys,
-                color="red" if is_best else "black",
+                color=(
+                    COLLIDING_COLOR
+                    if node_sequence["collides"]
+                    else COLLISION_FREE_COLOR
+                ),
                 linewidth=2.5 if is_best else 1.0,
                 alpha=1.0 if is_best else 0.55,
                 marker="o" if is_best else None,
@@ -359,17 +374,27 @@ class NodeSequenceViewer:
             Line2D(
                 [0],
                 [0],
-                color="red",
+                color=COLLISION_FREE_COLOR,
                 linewidth=2.5,
-                label="Best node sequence",
+                marker="o",
+                markersize=3,
+                label="Best collision-free node sequence",
             ),
             Line2D(
                 [0],
                 [0],
-                color="black",
+                color=COLLISION_FREE_COLOR,
                 linewidth=1.0,
                 alpha=0.55,
-                label="Other node sequences",
+                label="Other collision-free node sequences",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color=COLLIDING_COLOR,
+                linewidth=1.0,
+                alpha=0.55,
+                label="Colliding node sequences",
             ),
             Line2D(
                 [0],
@@ -384,7 +409,7 @@ class NodeSequenceViewer:
                 Line2D(
                     [0],
                     [0],
-                    color="blue",
+                    color=OBSTACLE_COLOR,
                     marker="o",
                     linestyle="none",
                     markersize=7,

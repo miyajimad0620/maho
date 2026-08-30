@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 
@@ -66,7 +67,8 @@ void AssertInvalidParams(const OptimizerParams& params) {
 void TestEmptyNodes() {
   const Optimizer optimizer = MakeOptimizer(MakeParams());
 
-  assert(optimizer.optimize({}, {}, 1.0, {}, {1.0, 2.0, 3.0}).empty());
+  assert(optimizer.optimize({}, {}, 1.0, 1.0, {},
+                            {1.0, 2.0, 3.0}).empty());
 }
 
 void TestOptimizesSingleNodeTowardGoal() {
@@ -74,11 +76,22 @@ void TestOptimizesSingleNodeTowardGoal() {
   const Nodes nodes{{{0.0, 0.0, 0.0}}};
   const Pose2D goal{1.0, -2.0, 0.5};
 
-  const Nodes optimized = optimizer.optimize(nodes, {}, 1.0, {}, goal);
+  const Nodes optimized = optimizer.optimize(nodes, {}, 1.0, 1.0, {},
+                                             goal);
 
   assert(optimized[0].velocity.x > nodes[0].velocity.x);
   assert(optimized[0].velocity.y < nodes[0].velocity.y);
   assert(optimized[0].velocity.theta > nodes[0].velocity.theta);
+}
+
+void TestUsesFirstDt() {
+  const Optimizer optimizer = MakeOptimizer(MakeParams());
+  const Nodes nodes{{{0.0, 0.0, 0.0}}};
+
+  const Nodes optimized =
+      optimizer.optimize(nodes, {}, 1.0, 0.5, {}, {1.0, 0.0, 0.0});
+
+  assert(IsNear(optimized[0].velocity.x, 0.1));
 }
 
 void TestOptimizesFirstNodeTowardGoal() {
@@ -90,9 +103,29 @@ void TestOptimizesFirstNodeTowardGoal() {
   };
 
   const Nodes optimized =
-      optimizer.optimize(nodes, {}, 1.0, {}, {3.0, 0.0, 0.0});
+      optimizer.optimize(nodes, {}, 1.0, 1.0, {}, {3.0, 0.0, 0.0});
 
   assert(optimized.front().velocity.x > nodes.front().velocity.x);
+}
+
+void TestKeepsFixedNodes() {
+  const Optimizer optimizer = MakeOptimizer(MakeParams());
+  const Nodes nodes{
+      {{0.0, 0.0, 0.0}},
+      {{0.0, 0.0, 0.0}},
+      {{0.0, 0.0, 0.0}},
+  };
+
+  const Nodes optimized = optimizer.optimize(
+      nodes, {}, 1.0, 1.0, {}, {3.0, 0.0, 0.0}, 1);
+
+  assert(IsNear(optimized.front().velocity.x,
+                nodes.front().velocity.x));
+  assert(IsNear(optimized.front().velocity.y,
+                nodes.front().velocity.y));
+  assert(IsNear(optimized.front().velocity.theta,
+                nodes.front().velocity.theta));
+  assert(optimized[1].velocity.x > nodes[1].velocity.x);
 }
 
 void TestPerformsOneUpdatePerCall() {
@@ -100,8 +133,8 @@ void TestPerformsOneUpdatePerCall() {
   const Nodes nodes{{{0.0, 0.0, 0.0}}};
   const Pose2D goal{1.0, 0.0, 0.0};
 
-  const Nodes once = optimizer.optimize(nodes, {}, 1.0, {}, goal);
-  const Nodes twice = optimizer.optimize(once, {}, 1.0, {}, goal);
+  const Nodes once = optimizer.optimize(nodes, {}, 1.0, 1.0, {}, goal);
+  const Nodes twice = optimizer.optimize(once, {}, 1.0, 1.0, {}, goal);
 
   assert(IsNear(once[0].velocity.x, 0.2));
   assert(IsNear(twice[0].velocity.x, 0.36));
@@ -122,10 +155,11 @@ void TestMovesAwayFromObstacle() {
       MakeOptimizer(MakeParams(), evaluation_function);
   const Nodes nodes{{{0.0, 0.0, 0.0}}};
   const Pose2D initial_pose{0.0, 0.0, 0.0};
-  const Env env{{0.0, 0.0}};
+  const Env env{{1.0, 0.0}};
 
   const Nodes optimized =
-      optimizer.optimize(nodes, initial_pose, 1.0, env, initial_pose);
+      optimizer.optimize(nodes, initial_pose, 1.0, 1.0, env,
+                         initial_pose);
 
   assert(std::hypot(optimized[0].velocity.x,
                     optimized[0].velocity.y) > 0.0);
@@ -141,7 +175,7 @@ void TestLimitsAbsoluteVelocity() {
       {{-8.0, 9.0, -10.0}},
   };
 
-  const Nodes optimized = optimizer.optimize(nodes, {}, 1.0, {}, {});
+  const Nodes optimized = optimizer.optimize(nodes, {}, 1.0, 1.0, {}, {});
 
   for (const Node& node : optimized) {
     assert(std::abs(node.velocity.x) <=
@@ -164,7 +198,7 @@ void TestLimitsAdjacentVelocityChanges() {
       {{-5.0, -5.0, -5.0}},
   };
 
-  const Nodes optimized = optimizer.optimize(nodes, {}, 1.0, {}, {});
+  const Nodes optimized = optimizer.optimize(nodes, {}, 1.0, 1.0, {}, {});
 
   for (std::size_t i = 1; i < optimized.size(); ++i) {
     const Twist2D& previous = optimized[i - 1].velocity;
@@ -212,15 +246,46 @@ void TestRejectsInvalidParameters() {
   AssertInvalidParams(params);
 }
 
+void TestRejectsInvalidDurations() {
+  const Optimizer optimizer = MakeOptimizer(MakeParams());
+  for (const auto& durations :
+       {std::pair<double, double>{0.0, 0.0},
+        std::pair<double, double>{1.0, -0.1},
+        std::pair<double, double>{1.0, 1.1}}) {
+    bool threw = false;
+    try {
+      optimizer.optimize({}, {}, durations.first, durations.second, {}, {});
+    } catch (const std::invalid_argument&) {
+      threw = true;
+    }
+    assert(threw);
+  }
+}
+
+void TestRejectsInvalidFixedNodeCount() {
+  const Optimizer optimizer = MakeOptimizer(MakeParams());
+  bool threw = false;
+  try {
+    optimizer.optimize({{{0.0, 0.0, 0.0}}}, {}, 1.0, 1.0, {}, {}, 2);
+  } catch (const std::invalid_argument&) {
+    threw = true;
+  }
+  assert(threw);
+}
+
 }  // namespace
 
 int main() {
   TestEmptyNodes();
   TestOptimizesSingleNodeTowardGoal();
+  TestUsesFirstDt();
   TestOptimizesFirstNodeTowardGoal();
+  TestKeepsFixedNodes();
   TestPerformsOneUpdatePerCall();
   TestMovesAwayFromObstacle();
   TestLimitsAbsoluteVelocity();
   TestLimitsAdjacentVelocityChanges();
   TestRejectsInvalidParameters();
+  TestRejectsInvalidDurations();
+  TestRejectsInvalidFixedNodeCount();
 }

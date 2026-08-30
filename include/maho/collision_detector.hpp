@@ -13,7 +13,7 @@ class CollisionDetector {
   explicit CollisionDetector(const CollisionDetectorParams& params);
 
   bool detectsCollision(const Nodes& nodes, const Pose2D& initial_pose,
-                        double dt, const Env& env) const;
+                        double dt, double first_dt, const Env& env) const;
 
  private:
   CollisionDetectorParams params_;

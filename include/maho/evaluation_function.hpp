@@ -22,7 +22,7 @@ class EvaluationFunction {
   explicit EvaluationFunction(const EvaluationFunctionParams& params);
 
   double evaluate(const Nodes& nodes, const Pose2D& initial_pose, double dt,
-                  const Env& env, const Goal& goal) const;
+                  double first_dt, const Env& env, const Goal& goal) const;
 
  private:
   EvaluationFunctionParams params_;

@@ -1,6 +1,8 @@
 #ifndef MAHO__OPTIMIZER_HPP_
 #define MAHO__OPTIMIZER_HPP_
 
+#include <cstddef>
+
 #include "maho/env.hpp"
 #include "maho/evaluation_function.hpp"
 #include "maho/node.hpp"
@@ -18,10 +20,13 @@ class Optimizer {
             const EvaluationFunction& evaluation_function);
 
   Nodes optimize(const Nodes& nodes, const Pose2D& initial_pose, double dt,
-                 const Env& env, const Pose2D& goal) const;
+                 double first_dt, const Env& env,
+                 const Pose2D& goal,
+                 std::size_t fixed_node_count = 0) const;
 
  private:
-  void enforceVelocityConstraints(Nodes* nodes) const;
+  void enforceVelocityConstraints(Nodes* nodes,
+                                  std::size_t fixed_node_count) const;
 
   OptimizerParams params_;
   EvaluationFunction evaluation_function_;

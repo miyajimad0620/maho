@@ -14,12 +14,21 @@ Selector::Selector(const SelectorParams& params,
                    const EvaluationFunction& evaluation_function)
     : params_(params), evaluation_function_(evaluation_function) {}
 
+double Selector::evaluate(const Nodes& nodes,
+                          const Pose2D& initial_pose, double dt,
+                          double first_dt, const Env& env,
+                          const Goal& goal) const {
+  return evaluation_function_.evaluate(nodes, initial_pose, dt, first_dt,
+                                       env, goal);
+}
+
 double Selector::terminalDistance(const Nodes& lhs, const Nodes& rhs,
-                                  const Pose2D& initial_pose, double dt) const {
+                                  const Pose2D& initial_pose, double dt,
+                                  double first_dt) const {
   const Pose2D lhs_pose =
-      CalculateTerminalPose(initial_pose, lhs, dt);
+      CalculateTerminalPose(initial_pose, lhs, dt, first_dt);
   const Pose2D rhs_pose =
-      CalculateTerminalPose(initial_pose, rhs, dt);
+      CalculateTerminalPose(initial_pose, rhs, dt, first_dt);
   const Node& lhs_node = lhs.back();
   const Node& rhs_node = rhs.back();
   const double pose_distance = std::sqrt(

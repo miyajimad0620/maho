@@ -1,8 +1,11 @@
 #include "maho/maho.hpp"
 
+#include "maho/kinematics.hpp"
+
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -11,6 +14,15 @@ constexpr double kTolerance = 1e-9;
 
 EvaluationFunction MakeEvaluationFunction() {
   return EvaluationFunction({0.0, 0.0, 0.1, 1.0, 0.1, 0.05});
+}
+
+Optimizer MakeOptimizer() {
+  return Optimizer({
+      0.02,
+      1e-4,
+      {2.0, 2.0, 1.0},
+      {0.2, 0.2, 0.1},
+  }, MakeEvaluationFunction());
 }
 
 Maho MakeMaho(std::size_t replan_optimization_count = 0,
@@ -30,12 +42,7 @@ Maho MakeMaho(std::size_t replan_optimization_count = 0,
   const EvaluationFunction evaluation_function = MakeEvaluationFunction();
   const CollisionDetector collision_detector({robot_radius});
   const Selector selector({1.0, 0.5, 0.2}, evaluation_function);
-  const Optimizer optimizer({
-      0.02,
-      1e-4,
-      {2.0, 2.0, 1.0},
-      {0.2, 0.2, 0.1},
-  }, evaluation_function);
+  const Optimizer optimizer = MakeOptimizer();
   return Maho(params, expander, collision_detector, selector, optimizer);
 }
 
@@ -57,16 +64,6 @@ bool IsSameNodes(const Nodes& lhs, const Nodes& rhs) {
   return true;
 }
 
-bool Contains(const Maho::NodeSequences& node_sequences,
-              const Nodes& expected) {
-  for (const Nodes& nodes : node_sequences) {
-    if (IsSameNodes(nodes, expected)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 void AssertFixedSize(const Maho::NodeSequences& node_sequences) {
   assert(node_sequences.size() == Maho::kNodeSequenceCount);
   for (const Nodes& nodes : node_sequences) {
@@ -75,12 +72,12 @@ void AssertFixedSize(const Maho::NodeSequences& node_sequences) {
 }
 
 void AssertSortedForPose(const Maho::NodeSequences& node_sequences,
-                         const Pose2D& pose) {
+                         const Pose2D& pose, double first_dt = 0.2) {
   const EvaluationFunction evaluation_function = MakeEvaluationFunction();
   double previous_cost = -1.0;
   for (const Nodes& nodes : node_sequences) {
     const double cost = evaluation_function.evaluate(
-        nodes, pose, 0.2, {}, {3.0, 1.0, 0.2});
+        nodes, pose, 0.2, first_dt, {}, {3.0, 1.0, 0.2});
     assert(previous_cost <= cost + kTolerance);
     previous_cost = cost;
   }
@@ -94,7 +91,7 @@ void TestConstructsFixedLengthNodeSequences() {
   AssertSortedForPose(node_sequences, {0.0, 0.0, 0.0});
 }
 
-void TestReplanAppendsThenDropsExpansionWhenOptimizationIsDisabled() {
+void TestReplanShiftsAndExpandsNodeSequences() {
   Maho maho = MakeMaho();
   const Maho::NodeSequences before = maho.get_nodes();
   const Pose2D pose{0.5, -0.2, 0.1};
@@ -103,63 +100,109 @@ void TestReplanAppendsThenDropsExpansionWhenOptimizationIsDisabled() {
 
   const Maho::NodeSequences after = maho.get_nodes();
   AssertFixedSize(after);
+  bool initial_node_came_from_previous_paths = false;
+  for (const Nodes& parent : before) {
+    initial_node_came_from_previous_paths =
+        initial_node_came_from_previous_paths ||
+        IsSameNode(after.front().front(), parent[1]);
+  }
+  assert(initial_node_came_from_previous_paths);
   for (const Nodes& nodes : after) {
-    assert(Contains(before, nodes));
+    assert(IsSameNode(nodes.front(), after.front().front()));
+    bool has_shifted_parent = false;
+    for (const Nodes& parent : before) {
+      bool same_prefix = true;
+      for (std::size_t i = 1;
+           i < Maho::kNodeSequenceLength - 1; ++i) {
+        same_prefix = same_prefix && IsSameNode(nodes[i], parent[i + 1]);
+      }
+      has_shifted_parent = has_shifted_parent || same_prefix;
+    }
+    assert(has_shifted_parent);
   }
   AssertSortedForPose(after, pose);
 }
 
-void TestUpdatePosePreservesNodesWhenOptimizationIsDisabled() {
+void TestUpdatePosePreservesOrderWhenOptimizationIsDisabled() {
   Maho maho = MakeMaho();
   const Maho::NodeSequences before = maho.get_nodes();
   const Pose2D pose{1.0, 0.5, -0.2};
 
-  maho.update_pose(pose);
+  maho.update_pose(pose, 0.1);
 
   const Maho::NodeSequences after = maho.get_nodes();
-  for (const Nodes& nodes : after) {
-    assert(Contains(before, nodes));
+  assert(after.size() == before.size());
+  for (std::size_t i = 0; i < after.size(); ++i) {
+    assert(IsSameNodes(after[i], before[i]));
   }
-  AssertSortedForPose(after, pose);
 }
 
-void TestUpdatePoseRunsConfiguredOptimizationCount() {
+void TestUpdatePoseOptimizesOnlyAfterFirstNode() {
   Maho maho = MakeMaho(0, 1);
   const Maho::NodeSequences before = maho.get_nodes();
+  const Pose2D pose{0.0, 0.0, 0.0};
+  const Pose2D next_node_initial_pose =
+      IntegratePose(pose, before.front().front().velocity, 0.1);
+  const Nodes first_internal_nodes(before.front().begin() + 1,
+                                   before.front().end());
+  const Nodes expected_first_internal_nodes = MakeOptimizer().optimize(
+      first_internal_nodes, next_node_initial_pose, 0.2, 0.2, {},
+      {3.0, 1.0, 0.2});
 
-  maho.update_pose({0.0, 0.0, 0.0});
-
-  const Maho::NodeSequences after = maho.get_nodes();
-  bool changed = false;
-  for (const Nodes& nodes : after) {
-    changed = changed || !Contains(before, nodes);
-  }
-  assert(changed);
-}
-
-void TestReplanRunsConfiguredOptimizationCount() {
-  Maho maho = MakeMaho(1, 0);
-  const Maho::NodeSequences before = maho.get_nodes();
-
-  maho.replan({0.3, 0.0, 0.0});
+  maho.update_pose(pose, 0.1);
 
   const Maho::NodeSequences after = maho.get_nodes();
   bool changed = false;
-  for (const Nodes& nodes : after) {
-    changed = changed || !Contains(before, nodes);
+  assert(after.size() == before.size());
+  for (std::size_t path = 0; path < after.size(); ++path) {
+    assert(IsSameNode(after[path].front(), before[path].front()));
+    for (std::size_t node = 1; node < after[path].size(); ++node) {
+      changed = changed ||
+                !IsSameNode(after[path][node], before[path][node]);
+    }
   }
   assert(changed);
-  AssertFixedSize(after);
+  for (std::size_t node = 1; node < after.front().size(); ++node) {
+    assert(IsSameNode(after.front()[node],
+                      expected_first_internal_nodes[node - 1]));
+  }
 }
 
 void TestGetNodesFiltersCollisionsWithoutDiscardingStoredPaths() {
   Maho maho = MakeMaho(0, 0, {{0.0, 0.0}}, 0.1);
 
+  const Maho::NodeSequenceStatuses colliding_statuses =
+      maho.get_node_sequences_with_status();
+  assert(colliding_statuses.size() == Maho::kNodeSequenceCount);
+  for (const Maho::NodeSequenceStatus& status : colliding_statuses) {
+    assert(status.nodes.size() == Maho::kNodeSequenceLength);
+    assert(status.collides);
+  }
   assert(maho.get_nodes().empty());
 
-  maho.update_pose({10.0, 0.0, 0.0});
+  maho.update_pose({10.0, 0.0, 0.0}, 0.1);
 
+  const Maho::NodeSequenceStatuses collision_free_statuses =
+      maho.get_node_sequences_with_status();
+  assert(collision_free_statuses.size() == Maho::kNodeSequenceCount);
+  for (const Maho::NodeSequenceStatus& status : collision_free_statuses) {
+    assert(!status.collides);
+  }
   AssertFixedSize(maho.get_nodes());
+}
+
+void TestRejectsInvalidReplanElapsedTime() {
+  Maho maho = MakeMaho();
+  for (double dt_replan :
+       {-0.1, 0.21, std::numeric_limits<double>::infinity()}) {
+    bool threw = false;
+    try {
+      maho.update_pose({}, dt_replan);
+    } catch (const std::invalid_argument&) {
+      threw = true;
+    }
+    assert(threw);
+  }
 }
 
 void TestDetectsGoalReached() {
@@ -202,11 +245,11 @@ void TestRejectsInvalidDt() {
 
 int main() {
   TestConstructsFixedLengthNodeSequences();
-  TestReplanAppendsThenDropsExpansionWhenOptimizationIsDisabled();
-  TestUpdatePosePreservesNodesWhenOptimizationIsDisabled();
-  TestUpdatePoseRunsConfiguredOptimizationCount();
-  TestReplanRunsConfiguredOptimizationCount();
+  TestReplanShiftsAndExpandsNodeSequences();
+  TestUpdatePosePreservesOrderWhenOptimizationIsDisabled();
+  TestUpdatePoseOptimizesOnlyAfterFirstNode();
   TestGetNodesFiltersCollisionsWithoutDiscardingStoredPaths();
+  TestRejectsInvalidReplanElapsedTime();
   TestDetectsGoalReached();
   TestRejectsInvalidDt();
 }
