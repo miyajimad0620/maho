@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -51,32 +50,15 @@ Nodes Optimizer::optimize(const Nodes& nodes, const Pose2D& initial_pose,
   }
 
   Nodes next = optimized;
-  const double current_cost = evaluation_function_.evaluate(
+  const Nodes gradient = evaluation_function_.evaluate_grad(
       optimized, initial_pose, dt, first_dt, env, goal);
   for (std::size_t i = fixed_node_count; i < optimized.size(); ++i) {
-    for (double Twist2D::*component : {&Twist2D::x, &Twist2D::y,
-                                      &Twist2D::theta}) {
-      Nodes lower = optimized;
-      Nodes upper = optimized;
-      lower[i].velocity.*component -= params_.finite_difference_step;
-      upper[i].velocity.*component += params_.finite_difference_step;
-      enforceVelocityConstraints(&lower, fixed_node_count);
-      enforceVelocityConstraints(&upper, fixed_node_count);
-      const double lower_cost = evaluation_function_.evaluate(
-          lower, initial_pose, dt, first_dt, env, goal);
-      const double upper_cost = evaluation_function_.evaluate(
-          upper, initial_pose, dt, first_dt, env, goal);
-      double gradient =
-          (upper_cost - lower_cost) /
-          (2.0 * params_.finite_difference_step);
-      if (std::abs(gradient) < std::numeric_limits<double>::epsilon() &&
-          upper_cost < current_cost) {
-        // The distance cost has no unique gradient at an obstacle point.
-        gradient =
-            (upper_cost - current_cost) / params_.finite_difference_step;
-      }
-      next[i].velocity.*component -= params_.learning_rate * gradient;
-    }
+    next[i].velocity.x -=
+        params_.learning_rate * gradient[i].velocity.x;
+    next[i].velocity.y -=
+        params_.learning_rate * gradient[i].velocity.y;
+    next[i].velocity.theta -=
+        params_.learning_rate * gradient[i].velocity.theta;
   }
   enforceVelocityConstraints(&next, fixed_node_count);
   return next;

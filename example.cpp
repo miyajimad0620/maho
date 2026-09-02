@@ -14,6 +14,7 @@ constexpr std::size_t kPositionUpdateCount = 50;
 constexpr std::size_t kReplanPositionUpdateInterval = 10;
 constexpr double kPositionUpdateDt = 0.02;
 constexpr double kPredictionDt = 0.2;
+constexpr bool kEnableUpdatePose = false;
 
 void PrintDouble(double value) {
   if (std::isnan(value)) {
@@ -174,7 +175,9 @@ int main() {
     current_pose = IntegratePose(current_pose, command.velocity,
                                  kPositionUpdateDt);
     dt_replan = std::min(kPredictionDt, dt_replan + kPositionUpdateDt);
-    maho.update_pose(current_pose, dt_replan);
+    if (kEnableUpdatePose) {
+      maho.update_pose(current_pose, dt_replan);
+    }
 
     if (update_count % kReplanPositionUpdateInterval == 0) {
       maho.replan(current_pose);
@@ -184,13 +187,13 @@ int main() {
           !safe_node_sequences.front().empty()) {
         command = safe_node_sequences.front().front();
       }
-    }
 
-    const Maho::NodeSequenceStatuses node_sequences =
-        maho.get_node_sequences_with_status();
-    PrintNodeSequences("position_update_count", update_count,
-                       current_pose, command,
-                       kPredictionDt - dt_replan, node_sequences);
+      const Maho::NodeSequenceStatuses node_sequences =
+          maho.get_node_sequences_with_status();
+      PrintNodeSequences("position_update_count", update_count,
+                         current_pose, command, kPredictionDt,
+                         node_sequences);
+    }
 
     if (maho.is_goal_reached(current_pose, command)) {
       break;

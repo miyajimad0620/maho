@@ -1,7 +1,9 @@
 #include "maho/evaluation_function.hpp"
 #include "maho/kinematics.hpp"
 
+#include <array>
 #include <cassert>
+#include <cstddef>
 #include <cmath>
 #include <stdexcept>
 
@@ -223,6 +225,66 @@ void TestDoesNotAddTerminalVelocityCostFarFromGoal() {
                 0.0));
 }
 
+void TestCalculatesCostAndGradientTogether() {
+  const EvaluationFunction evaluation_function({
+      1.3,
+      2.0,
+      0.2,
+      1.1,
+      0.7,
+      0.4,
+      {0.8, 0.6, 1.4, 0.5, 0.05, 0.3, 0.2, 0.9, 0.7, 1.2},
+  });
+  const Nodes nodes{
+      {{0.8, 0.1, 0.25}},
+      {{0.6, -0.2, -0.18}},
+      {{0.4, 0.15, 0.12}},
+  };
+  const Pose2D initial_pose{0.3, -0.4, 0.2};
+  const Env env{{1.1, 0.2}, {-2.0, 1.5}};
+  const Goal goal{2.5, -0.7, 0.8};
+
+  const EvaluationResult result = evaluation_function.evaluate_with_grad(
+      nodes, initial_pose, 0.4, 0.25, env, goal);
+  assert(IsNear(result.cost, evaluation_function.evaluate(
+                                 nodes, initial_pose, 0.4, 0.25, env,
+                                 goal)));
+
+  constexpr double kStep = 1e-6;
+  constexpr double kGradientTolerance = 2e-5;
+  const std::array<double Twist2D::*, 3> components{
+      &Twist2D::x,
+      &Twist2D::y,
+      &Twist2D::theta,
+  };
+  for (std::size_t i = 0; i < nodes.size(); ++i) {
+    for (double Twist2D::*component : components) {
+      Nodes lower = nodes;
+      Nodes upper = nodes;
+      lower[i].velocity.*component -= kStep;
+      upper[i].velocity.*component += kStep;
+      const double expected =
+          (evaluation_function.evaluate(upper, initial_pose, 0.4, 0.25,
+                                        env, goal) -
+           evaluation_function.evaluate(lower, initial_pose, 0.4, 0.25,
+                                        env, goal)) /
+          (2.0 * kStep);
+      const double actual = result.gradient[i].velocity.*component;
+      assert(std::abs(actual - expected) <
+             kGradientTolerance * (1.0 + std::abs(expected)));
+    }
+  }
+
+  const Nodes gradient = evaluation_function.evaluate_grad(
+      nodes, initial_pose, 0.4, 0.25, env, goal);
+  for (std::size_t i = 0; i < nodes.size(); ++i) {
+    for (double Twist2D::*component : components) {
+      assert(IsNear(gradient[i].velocity.*component,
+                    result.gradient[i].velocity.*component));
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -242,4 +304,5 @@ int main() {
   TestAddsTerminalVelocityCost();
   TestAddsDistanceBasedAngularVelocityCost();
   TestDoesNotAddTerminalVelocityCostFarFromGoal();
+  TestCalculatesCostAndGradientTogether();
 }

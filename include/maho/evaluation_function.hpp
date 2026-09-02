@@ -17,12 +17,23 @@ struct EvaluationFunctionParams {
   GoalVelocityCostParams goal_velocity_cost{};
 };
 
+struct EvaluationResult {
+  double cost;
+  Nodes gradient;
+};
+
 class EvaluationFunction {
  public:
   explicit EvaluationFunction(const EvaluationFunctionParams& params);
 
   double evaluate(const Nodes& nodes, const Pose2D& initial_pose, double dt,
                   double first_dt, const Env& env, const Goal& goal) const;
+  Nodes evaluate_grad(const Nodes& nodes, const Pose2D& initial_pose,
+                      double dt, double first_dt, const Env& env,
+                      const Goal& goal) const;
+  EvaluationResult evaluate_with_grad(
+      const Nodes& nodes, const Pose2D& initial_pose, double dt,
+      double first_dt, const Env& env, const Goal& goal) const;
 
  private:
   EvaluationFunctionParams params_;
