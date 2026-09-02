@@ -1,14 +1,7 @@
 #include "maho/selector.hpp"
 
+#include <algorithm>
 #include <cmath>
-
-namespace {
-
-double AngleDifference(double lhs, double rhs) {
-  return std::remainder(lhs - rhs, 2.0 * std::acos(-1.0));
-}
-
-}  // namespace
 
 Selector::Selector(const SelectorParams& params,
                    const EvaluationFunction& evaluation_function)
@@ -22,23 +15,25 @@ double Selector::evaluate(const Nodes& nodes,
                                        env, goal);
 }
 
-double Selector::terminalDistance(const Nodes& lhs, const Nodes& rhs,
-                                  const Pose2D& initial_pose, double dt,
-                                  double first_dt) const {
-  const Pose2D lhs_pose =
-      CalculateTerminalPose(initial_pose, lhs, dt, first_dt);
-  const Pose2D rhs_pose =
-      CalculateTerminalPose(initial_pose, rhs, dt, first_dt);
-  const Node& lhs_node = lhs.back();
-  const Node& rhs_node = rhs.back();
-  const double pose_distance = std::sqrt(
-      std::pow(lhs_pose.x - rhs_pose.x, 2) +
-      std::pow(lhs_pose.y - rhs_pose.y, 2) +
-      std::pow(AngleDifference(lhs_pose.theta, rhs_pose.theta), 2));
-  const double velocity_distance = std::sqrt(
-      std::pow(lhs_node.velocity.x - rhs_node.velocity.x, 2) +
-      std::pow(lhs_node.velocity.y - rhs_node.velocity.y, 2) +
-      std::pow(lhs_node.velocity.theta - rhs_node.velocity.theta, 2));
-  return params_.pose_coefficient * pose_distance +
-         params_.velocity_coefficient * velocity_distance;
+double Selector::pathDistance(const Nodes& lhs, const Nodes& rhs,
+                              const Pose2D& initial_pose, double dt,
+                              double first_dt) const {
+  const std::size_t node_count = std::min(lhs.size(), rhs.size());
+  if (node_count == 0) {
+    return 0.0;
+  }
+
+  Pose2D lhs_pose = initial_pose;
+  Pose2D rhs_pose = initial_pose;
+  double squared_distance = 0.0;
+  for (std::size_t i = 0; i < node_count; ++i) {
+    const double duration = i == 0 ? first_dt : dt;
+    lhs_pose = IntegratePose(lhs_pose, lhs[i].velocity, duration);
+    rhs_pose = IntegratePose(rhs_pose, rhs[i].velocity, duration);
+    const double dx = lhs_pose.x - rhs_pose.x;
+    const double dy = lhs_pose.y - rhs_pose.y;
+    squared_distance += dx * dx + dy * dy;
+  }
+  return params_.position_coefficient *
+         std::sqrt(squared_distance / static_cast<double>(node_count));
 }

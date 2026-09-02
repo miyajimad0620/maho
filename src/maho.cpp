@@ -31,10 +31,10 @@ Maho::Maho(const MahoParams& params, const Expander& expander,
     throw std::invalid_argument("invalid maho parameter");
   }
 
+  initialization_history_.push_back(get_node_sequences_with_status());
   while (node_sequences_[0].size() < kStoredNodeSequenceLength) {
-    Candidates candidates = expandNodes();
+    Candidates candidates = expandNodes(true);
     for (Nodes& candidate : candidates) {
-      candidate.insert(candidate.begin(), initial_node_);
       optimize(&candidate, replan_optimization_count_, current_pose_, dt_, 1);
     }
     StoredNodeSequences selected = selector_.select<kNodeSequenceCount>(
@@ -43,13 +43,14 @@ Maho::Maho(const MahoParams& params, const Expander& expander,
       selected[i].erase(selected[i].begin());
       node_sequences_[i] = std::move(selected[i]);
     }
+    initialization_history_.push_back(get_node_sequences_with_status());
   }
 }
 
 void Maho::replan(const Pose2D& pose) {
   current_pose_ = pose;
   first_dt_ = dt_;
-  Candidates candidates = expandNodes();
+  Candidates candidates = expandNodes(false);
   for (Nodes& candidate : candidates) {
     optimize(&candidate, replan_optimization_count_, current_pose_, dt_);
   }
@@ -144,9 +145,6 @@ Maho::NodeSequenceStatuses Maho::get_node_sequences_with_status() const {
   NodeSequenceStatuses statuses;
   statuses.reserve(kNodeSequenceCount);
   for (const Nodes& candidate : node_sequences_) {
-    if (candidate.empty()) {
-      continue;
-    }
     Nodes nodes;
     nodes.reserve(kNodeSequenceLength);
     nodes.push_back(initial_node_);
@@ -160,18 +158,26 @@ Maho::NodeSequenceStatuses Maho::get_node_sequences_with_status() const {
   return statuses;
 }
 
-Maho::Candidates Maho::expandNodes() const {
+const Maho::InitializationHistory& Maho::get_initialization_history() const {
+  return initialization_history_;
+}
+
+Maho::Candidates Maho::expandNodes(bool include_initial_node) const {
   Candidates candidates{};
   std::size_t candidate_index = 0;
   for (const Nodes& nodes : node_sequences_) {
-    const Node& expansion_node =
-        nodes.empty() ? initial_node_ : nodes.back();
-    const Expander::ExpandedNodes expanded_nodes =
-        expander_.expand(expansion_node);
-    for (const Node& expanded_node : expanded_nodes) {
+    Nodes expansion_path = nodes;
+    if (include_initial_node) {
+      expansion_path.insert(expansion_path.begin(), initial_node_);
+    }
+    const Expander::ExpandedPaths expanded_paths =
+        expander_.expand(expansion_path);
+    for (const Nodes& expanded_path : expanded_paths) {
       Nodes& candidate = candidates[candidate_index++];
-      candidate = nodes;
-      candidate.push_back(expanded_node);
+      candidate = expanded_path;
+      if (include_initial_node) {
+        candidate.front() = initial_node_;
+      }
     }
   }
   return candidates;

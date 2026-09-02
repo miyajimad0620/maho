@@ -41,7 +41,7 @@ Maho MakeMaho(std::size_t replan_optimization_count = 0,
   const Expander expander(ExpanderParams{{0.2, 0.2, 0.1}});
   const EvaluationFunction evaluation_function = MakeEvaluationFunction();
   const CollisionDetector collision_detector({robot_radius});
-  const Selector selector({1.0, 0.5, 0.2}, evaluation_function);
+  const Selector selector({1.0, 0.2}, evaluation_function);
   const Optimizer optimizer = MakeOptimizer();
   return Maho(params, expander, collision_detector, selector, optimizer);
 }
@@ -86,9 +86,26 @@ void AssertSortedForPose(const Maho::NodeSequences& node_sequences,
 void TestConstructsFixedLengthNodeSequences() {
   const Maho maho = MakeMaho();
   const Maho::NodeSequences node_sequences = maho.get_nodes();
+  const Maho::InitializationHistory& initialization_history =
+      maho.get_initialization_history();
 
   AssertFixedSize(node_sequences);
   AssertSortedForPose(node_sequences, {0.0, 0.0, 0.0});
+  assert(initialization_history.size() == Maho::kNodeSequenceLength);
+  for (std::size_t step = 0; step < initialization_history.size(); ++step) {
+    const Maho::NodeSequenceStatuses& statuses =
+        initialization_history[step];
+    assert(statuses.size() == Maho::kNodeSequenceCount);
+    for (const Maho::NodeSequenceStatus& status : statuses) {
+      assert(status.nodes.size() == step + 1);
+      assert(IsSameNode(status.nodes.front(),
+                        statuses.front().nodes.front()));
+    }
+  }
+  for (std::size_t path = 0; path < node_sequences.size(); ++path) {
+    assert(IsSameNodes(initialization_history.back()[path].nodes,
+                       node_sequences[path]));
+  }
 }
 
 void TestReplanShiftsAndExpandsNodeSequences() {
@@ -113,7 +130,9 @@ void TestReplanShiftsAndExpandsNodeSequences() {
     for (const Nodes& parent : before) {
       bool same_prefix = true;
       for (std::size_t i = 1;
-           i < Maho::kNodeSequenceLength - 1; ++i) {
+           i < Maho::kNodeSequenceLength -
+                   Expander::kExpansionPathLength;
+           ++i) {
         same_prefix = same_prefix && IsSameNode(nodes[i], parent[i + 1]);
       }
       has_shifted_parent = has_shifted_parent || same_prefix;
@@ -232,7 +251,7 @@ void TestRejectsInvalidDt() {
          {0.1, 0.1, 0.1, 0.1}},
         Expander(ExpanderParams{{0.1, 0.1, 0.1}}),
         CollisionDetector({0.1}),
-        Selector({1.0, 1.0, 1.0}, evaluation_function),
+        Selector({1.0, 1.0}, evaluation_function),
         Optimizer({0.1, 1e-4, {1.0, 1.0, 1.0}, {1.0, 1.0, 1.0}},
                   evaluation_function));
   } catch (const std::invalid_argument&) {

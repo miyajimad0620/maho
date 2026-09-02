@@ -13,11 +13,12 @@ class Expander {
  public:
   static constexpr std::size_t kNoVelocityChangeIndex = 6;
   static constexpr std::size_t kExpansionCount = 8;
-  using ExpandedNodes = std::array<Node, kExpansionCount>;
+  static constexpr std::size_t kExpansionPathLength = 5;
+  using ExpandedPaths = std::array<Nodes, kExpansionCount>;
 
   explicit Expander(const ExpanderParams& params);
 
-  ExpandedNodes expand(const Node& node) const;
+  ExpandedPaths expand(const Nodes& nodes) const;
 
  private:
   ExpanderParams params_;

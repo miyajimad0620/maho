@@ -39,6 +39,7 @@ class Maho {
     bool collides;
   };
   using NodeSequenceStatuses = std::vector<NodeSequenceStatus>;
+  using InitializationHistory = std::vector<NodeSequenceStatuses>;
 
   Maho(const MahoParams& params, const Expander& expander,
        const CollisionDetector& collision_detector, const Selector& selector,
@@ -49,6 +50,7 @@ class Maho {
   bool is_goal_reached(const Pose2D& pose, const Node& node) const;
   NodeSequences get_nodes() const;
   NodeSequenceStatuses get_node_sequences_with_status() const;
+  const InitializationHistory& get_initialization_history() const;
 
  private:
   using StoredNodeSequences = std::array<Nodes, kNodeSequenceCount>;
@@ -58,7 +60,7 @@ class Maho {
       kNodeSequenceCount * Expander::kExpansionCount;
   using Candidates = std::array<Nodes, kCandidateCount>;
 
-  Candidates expandNodes() const;
+  Candidates expandNodes(bool include_initial_node) const;
   void optimize(Nodes* nodes, std::size_t optimization_count,
                 const Pose2D& initial_pose, double first_dt,
                 std::size_t fixed_node_count = 0) const;
@@ -77,6 +79,7 @@ class Maho {
   Selector selector_;
   Optimizer optimizer_;
   StoredNodeSequences node_sequences_{};
+  InitializationHistory initialization_history_;
 };
 
 #endif  // MAHO__MAHO_HPP_

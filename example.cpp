@@ -69,11 +69,11 @@ void PrintGoal(const Goal& goal) {
   std::cout << "\n";
 }
 
-void PrintNodeSequences(std::size_t position_update_count,
+void PrintNodeSequences(const char* count_label, std::size_t count,
                         const Pose2D& current_pose, const Node& command,
                         double first_dt,
                         const Maho::NodeSequenceStatuses& node_sequences) {
-  std::cout << "  - position_update_count: " << position_update_count
+  std::cout << "  - " << count_label << ": " << count
             << "\n"
             << "    current_pose: ";
   PrintPose(current_pose);
@@ -135,7 +135,7 @@ int main() {
       {2.5, 0.75, 0.25, 5.0, 0.2, 0.1,
        {20.0, 1.0, 2.0, 1.0, 0.1, 5.0, 1.0, 1.0, 1.0, 1.5}});
   const CollisionDetector collision_detector({0.25});
-  const Selector selector({1.0, 0.5, 0.2}, evaluation_function);
+  const Selector selector({8.0, 0.2}, evaluation_function);
   const Optimizer optimizer({
       0.002,
       1e-3,
@@ -156,8 +156,17 @@ int main() {
 
   PrintObstacles(params.env);
   PrintGoal(params.goal);
+  std::cout << "initialization_steps:\n";
+  const Maho::InitializationHistory& initialization_history =
+      maho.get_initialization_history();
+  for (std::size_t step = 0; step < initialization_history.size(); ++step) {
+    PrintNodeSequences("initialization_step", step, params.initial_pose,
+                       params.initial_node, kPredictionDt,
+                       initialization_history[step]);
+  }
   std::cout << "position_updates:\n";
-  PrintNodeSequences(0, current_pose, command, kPredictionDt,
+  PrintNodeSequences("position_update_count", 0, current_pose, command,
+                     kPredictionDt,
                      initial_node_sequences);
   double dt_replan = 0.0;
   for (std::size_t update_count = 1;
@@ -179,7 +188,8 @@ int main() {
 
     const Maho::NodeSequenceStatuses node_sequences =
         maho.get_node_sequences_with_status();
-    PrintNodeSequences(update_count, current_pose, command,
+    PrintNodeSequences("position_update_count", update_count,
+                       current_pose, command,
                        kPredictionDt - dt_replan, node_sequences);
 
     if (maho.is_goal_reached(current_pose, command)) {

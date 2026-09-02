@@ -19,7 +19,7 @@ except ImportError as error:
     )
 
 
-PositionUpdate = Dict[str, Any]
+Frame = Dict[str, Any]
 Point = Tuple[float, float]
 COLLISION_FREE_COLOR = "#0072B2"
 COLLIDING_COLOR = "#D55E00"
@@ -34,7 +34,7 @@ def has_numeric_components(value: Any, components: Sequence[str]) -> bool:
 
 def load_data(
     path: Path,
-) -> Tuple[List[PositionUpdate], List[Point], Optional[Point]]:
+) -> Tuple[List[Frame], List[Point], Optional[Point]]:
     try:
         with path.open(encoding="utf-8") as stream:
             document = yaml.safe_load(stream)
@@ -66,86 +66,111 @@ def load_data(
             raise ValueError("'goal' must have numeric x and y values")
         goal = float(goal_data["x"]), float(goal_data["y"])
 
-    position_updates = document["position_updates"]
-    seen_position_update_counts = set()
-    for position_update in position_updates:
-        if not isinstance(position_update, dict) or not isinstance(
-            position_update.get("position_update_count"), int
-        ):
-            raise ValueError(
-                "each position update must have an integer "
-                "'position_update_count' value"
-            )
-        position_update_count = position_update["position_update_count"]
-        if position_update_count in seen_position_update_counts:
-            raise ValueError(
-                f"duplicate position_update_count value: {position_update_count}"
-            )
-        seen_position_update_counts.add(position_update_count)
+    initialization_steps = document.get("initialization_steps", [])
+    if not isinstance(initialization_steps, list):
+        raise ValueError("'initialization_steps' must be a list")
 
-        if not has_numeric_components(
-            position_update.get("current_pose"), ("x", "y", "theta")
-        ):
-            raise ValueError(
-                f"current_pose at position update {position_update_count} must "
-                "have numeric x, y, and theta values"
-            )
-        if not has_numeric_components(
-            position_update.get("command_velocity"), ("x", "y", "theta")
-        ):
-            raise ValueError(
-                f"command_velocity at position update {position_update_count} "
-                "must have numeric x, y, and theta values"
-            )
-        if not isinstance(position_update.get("node_sequences"), list):
-            raise ValueError(
-                f"position update {position_update_count} must contain a "
-                "'node_sequences' list"
-            )
-        for node_sequence in position_update["node_sequences"]:
-            if (
-                not isinstance(node_sequence, dict)
-                or not isinstance(node_sequence.get("rank"), int)
-                or not isinstance(node_sequence.get("collides"), bool)
-                or not isinstance(node_sequence.get("nodes"), list)
+    frames = []
+    frame_groups = (
+        (initialization_steps, "initialization_step", "initialization"),
+        (
+            document["position_updates"],
+            "position_update_count",
+            "position update",
+        ),
+    )
+    for group, count_key, frame_type in frame_groups:
+        seen_counts = set()
+        for frame in group:
+            if not isinstance(frame, dict) or not isinstance(
+                frame.get(count_key), int
             ):
                 raise ValueError(
-                    f"every node sequence at position update "
-                    f"{position_update_count} must have an integer rank, a "
-                    "boolean collides value, and a 'nodes' list"
+                    f"each {frame_type} must have an integer "
+                    f"'{count_key}' value"
                 )
-            for node in node_sequence["nodes"]:
-                pose = node.get("pose") if isinstance(node, dict) else None
-                velocity = (
-                    node.get("velocity") if isinstance(node, dict) else None
+            count = frame[count_key]
+            if count in seen_counts:
+                raise ValueError(f"duplicate {count_key} value: {count}")
+            seen_counts.add(count)
+
+            if not has_numeric_components(
+                frame.get("current_pose"), ("x", "y", "theta")
+            ):
+                raise ValueError(
+                    f"current_pose at {frame_type} {count} must have "
+                    "numeric x, y, and theta values"
                 )
-                if not has_numeric_components(pose, ("x", "y", "theta")):
+            if not has_numeric_components(
+                frame.get("command_velocity"), ("x", "y", "theta")
+            ):
+                raise ValueError(
+                    f"command_velocity at {frame_type} {count} must have "
+                    "numeric x, y, and theta values"
+                )
+            if not isinstance(frame.get("node_sequences"), list):
+                raise ValueError(
+                    f"{frame_type} {count} must contain a "
+                    "'node_sequences' list"
+                )
+            for node_sequence in frame["node_sequences"]:
+                if (
+                    not isinstance(node_sequence, dict)
+                    or not isinstance(node_sequence.get("rank"), int)
+                    or not isinstance(node_sequence.get("collides"), bool)
+                    or not isinstance(node_sequence.get("nodes"), list)
+                ):
                     raise ValueError(
-                        f"every node at position update {position_update_count} "
-                        "must have numeric pose x, y, and theta values"
+                        f"every node sequence at {frame_type} {count} must "
+                        "have an integer rank, a boolean collides value, "
+                        "and a 'nodes' list"
                     )
-                if not has_numeric_components(velocity, ("x", "y", "theta")):
-                    raise ValueError(
-                        f"every node at position update {position_update_count} "
-                        "must have numeric velocity x, y, and theta values"
+                for node in node_sequence["nodes"]:
+                    pose = node.get("pose") if isinstance(node, dict) else None
+                    velocity = (
+                        node.get("velocity")
+                        if isinstance(node, dict)
+                        else None
                     )
-    return position_updates, obstacles, goal
+                    if not has_numeric_components(
+                        pose, ("x", "y", "theta")
+                    ):
+                        raise ValueError(
+                            f"every node at {frame_type} {count} must have "
+                            "numeric pose x, y, and theta values"
+                        )
+                    if not has_numeric_components(
+                        velocity, ("x", "y", "theta")
+                    ):
+                        raise ValueError(
+                            f"every node at {frame_type} {count} must have "
+                            "numeric velocity x, y, and theta values"
+                        )
+            frame["_frame_type"] = frame_type
+            frame["_frame_count"] = count
+            frames.append(frame)
+    return frames, obstacles, goal
 
 
-def current_position(position_update: PositionUpdate) -> Point:
-    pose = position_update["current_pose"]
+def frame_reference(frame: Frame) -> str:
+    prefix = "init" if frame["_frame_type"] == "initialization" else "update"
+    return f"{prefix}:{frame['_frame_count']}"
+
+
+def current_position(frame: Frame) -> Point:
+    pose = frame["current_pose"]
     return float(pose["x"]), float(pose["y"])
 
 
 def axis_limits(
-    position_updates: Sequence[PositionUpdate],
+    frames: Sequence[Frame],
     obstacles: Sequence[Point],
     goal: Optional[Point],
 ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     points = [
         (node["pose"]["x"], node["pose"]["y"])
-        for position_update in position_updates
-        for node_sequence in position_update["node_sequences"]
+        for frame in frames
+        for node_sequence in frame["node_sequences"]
         for node in node_sequence["nodes"]
         if math.isfinite(node["pose"]["x"])
         and math.isfinite(node["pose"]["y"])
@@ -153,8 +178,8 @@ def axis_limits(
     points.extend(
         point
         for point in (
-            current_position(position_update)
-            for position_update in position_updates
+            current_position(frame)
+            for frame in frames
         )
         if math.isfinite(point[0]) and math.isfinite(point[1])
     )
@@ -180,23 +205,23 @@ def axis_limits(
 class NodeSequenceViewer:
     def __init__(
         self,
-        position_updates: Sequence[PositionUpdate],
+        frames: Sequence[Frame],
         obstacles: Sequence[Point],
         goal: Optional[Point],
         source_name: str,
     ) -> None:
-        self.position_updates = position_updates
+        self.frames = frames
         self.obstacles = obstacles
         self.goal = goal
         self.source_name = source_name
-        self.position_update_index_by_count = {
-            position_update["position_update_count"]: index
-            for index, position_update in enumerate(position_updates)
+        self.frame_index_by_reference = {
+            frame_reference(frame): index
+            for index, frame in enumerate(frames)
         }
         self.index = 0
         self.updating_controls = False
         self.x_limits, self.y_limits = axis_limits(
-            position_updates, obstacles, goal
+            frames, obstacles, goal
         )
 
         self.figure, self.axes = plt.subplots(figsize=(10, 7))
@@ -211,35 +236,34 @@ class NodeSequenceViewer:
         self.next_button = Button(next_axes, r"$\rightarrow$")
         self.slider = Slider(
             slider_axes,
-            "Position update",
+            "Frame",
             0,
-            max(len(position_updates) - 1, 1),
+            max(len(frames) - 1, 1),
             valinit=0,
             valstep=1,
         )
-        initial_count = position_updates[0]["position_update_count"]
-        self.position_update_input = TextBox(
-            input_axes, "Count ", initial=str(initial_count)
+        self.frame_input = TextBox(
+            input_axes, "Go to ", initial=frame_reference(frames[0])
         )
 
         self.previous_button.on_clicked(
-            lambda _: self.change_position_update(self.index - 1)
+            lambda _: self.change_frame(self.index - 1)
         )
         self.next_button.on_clicked(
-            lambda _: self.change_position_update(self.index + 1)
+            lambda _: self.change_frame(self.index + 1)
         )
         self.slider.on_changed(
-            lambda value: self.change_position_update(round(value))
+            lambda value: self.change_frame(round(value))
         )
-        self.position_update_input.on_submit(self.submit_position_update)
+        self.frame_input.on_submit(self.submit_frame)
         self.figure.canvas.mpl_connect("key_press_event", self.on_key_press)
 
         self.draw()
 
-    def change_position_update(self, index: int) -> None:
+    def change_frame(self, index: int) -> None:
         if self.updating_controls:
             return
-        bounded_index = min(max(index, 0), len(self.position_updates) - 1)
+        bounded_index = min(max(index, 0), len(self.frames) - 1)
         if bounded_index == self.index:
             self.sync_controls()
             return
@@ -252,35 +276,35 @@ class NodeSequenceViewer:
         try:
             if round(self.slider.val) != self.index:
                 self.slider.set_val(self.index)
-            expected_text = str(
-                self.position_updates[self.index]["position_update_count"]
-            )
-            if self.position_update_input.text != expected_text:
-                self.position_update_input.set_val(expected_text)
+            expected_text = frame_reference(self.frames[self.index])
+            if self.frame_input.text != expected_text:
+                self.frame_input.set_val(expected_text)
         finally:
             self.updating_controls = False
 
-    def submit_position_update(self, text: str) -> None:
+    def submit_frame(self, text: str) -> None:
         if self.updating_controls:
             return
         try:
-            position_update_count = int(text)
-            index = self.position_update_index_by_count[position_update_count]
+            reference = text.strip().lower()
+            if ":" not in reference:
+                reference = f"update:{int(reference)}"
+            index = self.frame_index_by_reference[reference]
         except (ValueError, KeyError):
             self.sync_controls()
             return
-        self.change_position_update(index)
+        self.change_frame(index)
 
     def on_key_press(self, event: Any) -> None:
         if event.key == "left":
-            self.change_position_update(self.index - 1)
+            self.change_frame(self.index - 1)
         elif event.key == "right":
-            self.change_position_update(self.index + 1)
+            self.change_frame(self.index + 1)
 
     def draw(self) -> None:
         self.axes.clear()
-        position_update = self.position_updates[self.index]
-        node_sequences = position_update["node_sequences"]
+        frame = self.frames[self.index]
+        node_sequences = frame["node_sequences"]
         if self.obstacles:
             obstacle_xs, obstacle_ys = zip(*self.obstacles)
             self.axes.scatter(
@@ -316,7 +340,7 @@ class NodeSequenceViewer:
         draw_order = [index for index in drawable_indices if index != best_index]
         if best_index is not None:
             draw_order.append(best_index)
-        current_x, current_y = current_position(position_update)
+        current_x, current_y = current_position(frame)
         for index in draw_order:
             node_sequence = node_sequences[index]
             xs = [current_x] + [
@@ -342,10 +366,9 @@ class NodeSequenceViewer:
             )
 
         history = [
-            current_position(previous_position_update)
-            for previous_position_update in self.position_updates[
-                : self.index + 1
-            ]
+            current_position(previous_frame)
+            for previous_frame in self.frames[: self.index + 1]
+            if previous_frame["_frame_type"] == "position update"
         ]
         if history:
             history_xs, history_ys = zip(*history)
@@ -359,9 +382,9 @@ class NodeSequenceViewer:
                 zorder=3,
             )
 
-        position_update_count = position_update["position_update_count"]
         title = (
-            f"{self.source_name} — position update {position_update_count}"
+            f"{self.source_name} — {frame['_frame_type']} "
+            f"{frame['_frame_count']}"
         )
         self.axes.set_title(title)
         self.axes.set_xlabel("x")
@@ -396,14 +419,17 @@ class NodeSequenceViewer:
                 alpha=0.55,
                 label="Colliding node sequences",
             ),
-            Line2D(
-                [0],
-                [0],
-                color="green",
-                linewidth=2.5,
-                label="Position history",
-            ),
         ]
+        if history:
+            legend_handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    color="green",
+                    linewidth=2.5,
+                    label="Position history",
+                )
+            )
         if self.obstacles:
             legend_handles.append(
                 Line2D(
@@ -451,11 +477,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     try:
-        position_updates, obstacles, goal = load_data(args.yaml_file)
+        frames, obstacles, goal = load_data(args.yaml_file)
     except ValueError as error:
         sys.exit(f"Error: {error}")
     viewer = NodeSequenceViewer(
-        position_updates, obstacles, goal, args.yaml_file.name
+        frames, obstacles, goal, args.yaml_file.name
     )
     plt.show()
     del viewer

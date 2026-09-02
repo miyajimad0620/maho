@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <stdexcept>
 
 namespace {
 
@@ -22,8 +23,10 @@ bool IsSameNode(const Node& lhs, const Node& rhs) {
 
 void TestExpandsVelocityBranches() {
   const Expander expander(ExpanderParams{{0.2, 0.3, 0.4}});
-  const Node node{{1.0, -2.0, 0.5}};
-  const Expander::ExpandedNodes expanded = expander.expand(node);
+  const Nodes nodes{{{5.0, 6.0, 7.0}}, {{4.0, 5.0, 6.0}},
+                    {{3.0, 4.0, 5.0}}, {{2.0, 3.0, 4.0}},
+                    {{1.5, 2.0, 3.0}}, {{1.0, -2.0, 0.5}}};
+  const Expander::ExpandedPaths expanded = expander.expand(nodes);
   const std::array<Twist2D, Expander::kExpansionCount> expected{{
       {0.8, -2.0, 0.5},
       {1.2, -2.0, 0.5},
@@ -36,16 +39,34 @@ void TestExpandsVelocityBranches() {
   }};
 
   for (std::size_t branch = 0; branch < expanded.size(); ++branch) {
-    assert(IsSameNode(expanded[branch], Node{expected[branch]}));
+    assert(expanded[branch].size() == nodes.size() + 1);
+    assert(IsSameNode(expanded[branch][0], nodes[0]));
+    assert(IsSameNode(expanded[branch][1], nodes[1]));
+    for (std::size_t i = 2; i < expanded[branch].size(); ++i) {
+      assert(IsSameNode(expanded[branch][i], Node{expected[branch]}));
+    }
   }
 }
 
 void TestBrakingStopsSmallVelocities() {
   const Expander expander(ExpanderParams{{0.2, 0.3, 0.4}});
-  const Expander::ExpandedNodes expanded =
-      expander.expand(Node{{0.1, -0.2, 0.3}});
+  const Expander::ExpandedPaths expanded =
+      expander.expand({{{0.1, -0.2, 0.3}}});
 
-  assert(IsSameNode(expanded.back(), Node{{0.0, 0.0, 0.0}}));
+  for (const Node& node : expanded.back()) {
+    assert(IsSameNode(node, Node{{0.0, 0.0, 0.0}}));
+  }
+}
+
+void TestRejectsEmptyPath() {
+  const Expander expander(ExpanderParams{{0.2, 0.3, 0.4}});
+  bool threw = false;
+  try {
+    (void)expander.expand({});
+  } catch (const std::invalid_argument&) {
+    threw = true;
+  }
+  assert(threw);
 }
 
 void TestIntegratesPose() {
@@ -88,6 +109,7 @@ void TestCalculatesTerminalPose() {
 int main() {
   TestExpandsVelocityBranches();
   TestBrakingStopsSmallVelocities();
+  TestRejectsEmptyPath();
   TestIntegratesPose();
   TestIntegratesPoseWithNearZeroAngularVelocity();
   TestCalculatesTerminalPose();
